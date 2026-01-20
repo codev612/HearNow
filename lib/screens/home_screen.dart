@@ -13,6 +13,37 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _serverUrlController =
       TextEditingController(text: 'ws://localhost:3000/listen');
 
+  final ScrollController _transcriptScrollController = ScrollController();
+  int _lastTranscriptLength = 0;
+  int _lastInterimLength = 0;
+
+  void _maybeAutoScroll(SpeechToTextProvider provider) {
+    final transcriptLength = provider.transcriptText.length;
+    final interimLength = provider.interimText.length;
+
+    final changed = transcriptLength != _lastTranscriptLength ||
+        interimLength != _lastInterimLength;
+    _lastTranscriptLength = transcriptLength;
+    _lastInterimLength = interimLength;
+
+    if (!changed) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!_transcriptScrollController.hasClients) return;
+
+      final position = _transcriptScrollController.position;
+      final target = position.maxScrollExtent;
+      // Jump if layout is still changing, otherwise animate for a nicer feel.
+      if ((target - position.pixels).abs() < 4) return;
+      _transcriptScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -25,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _serverUrlController.dispose();
+    _transcriptScrollController.dispose();
     super.dispose();
   }
 
@@ -37,6 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Consumer<SpeechToTextProvider>(
         builder: (context, provider, child) {
+          _maybeAutoScroll(provider);
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -128,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       border: Border.all(color: Colors.grey.shade300),
                     ),
                     child: SingleChildScrollView(
+                      controller: _transcriptScrollController,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
