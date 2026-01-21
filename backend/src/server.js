@@ -35,13 +35,18 @@ app.post('/ai/respond', async (req, res) => {
     }
 
     const { turns, mode, question } = req.body ?? {};
-    if (!Array.isArray(turns) || turns.length === 0) {
+    if (!Array.isArray(turns)) {
       return res.status(400).json({ error: 'Missing turns[]' });
     }
 
     const questionText = typeof question === 'string' ? question.trim() : '';
     if (questionText.length > 800) {
       return res.status(400).json({ error: 'Question too long (max 800 chars)' });
+    }
+
+    // Allow empty turns if a question is provided
+    if (turns.length === 0 && questionText.length === 0) {
+      return res.status(400).json({ error: 'Missing turns[] or question' });
     }
 
     // Basic size limits to avoid accidental huge payloads.
@@ -56,8 +61,9 @@ app.post('/ai/respond', async (req, res) => {
       }))
       .filter((t) => t.text.length > 0);
 
-    if (normalized.length === 0) {
-      return res.status(400).json({ error: 'All turns were empty' });
+    // Allow empty normalized turns if a question is provided
+    if (normalized.length === 0 && questionText.length === 0) {
+      return res.status(400).json({ error: 'All turns were empty and no question provided' });
     }
 
     const totalChars = normalized.reduce((sum, t) => sum + t.text.length, 0);
@@ -80,19 +86,37 @@ app.post('/ai/respond', async (req, res) => {
     switch (requestMode) {
       case 'summary':
         systemPrompt = 'You are HearNow, an interview assistant. Summarize the interview conversation so far into concise bullet points. Include key topics discussed, candidate responses, and any notable points. If action items or follow-ups exist, list them separately.';
-        userPrompt = `Interview transcript:\n${historyText}\n\nProvide a concise summary of this interview.`;
+        if (historyText.length > 0) {
+          userPrompt = `Interview transcript:\n${historyText}\n\nProvide a concise summary of this interview.`;
+        } else {
+          userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+        }
         break;
       case 'insights':
         systemPrompt = 'You are HearNow, an interview assistant. Analyze the interview transcript and provide key insights about the candidate. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
-        userPrompt = `Interview transcript:\n${historyText}\n\nProvide key insights about this interview and candidate.`;
+        if (historyText.length > 0) {
+          userPrompt = `Interview transcript:\n${historyText}\n\nProvide key insights about this interview and candidate.`;
+        } else {
+          userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+        }
         break;
       case 'questions':
         systemPrompt = 'You are HearNow, an interview assistant. Based on the interview transcript so far, suggest 3-5 relevant follow-up questions the interviewer should ask. Consider what has been discussed, what gaps exist, and what would help make a better hiring decision. Format as a numbered list.';
-        userPrompt = `Interview transcript:\n${historyText}\n\nSuggest relevant follow-up questions for this interview.`;
+        if (historyText.length > 0) {
+          userPrompt = `Interview transcript:\n${historyText}\n\nSuggest relevant follow-up questions for this interview.`;
+        } else {
+          userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+        }
         break;
       default: // 'reply'
         systemPrompt = 'You are HearNow, an interview assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
-        userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
+        if (historyText.length > 0) {
+          userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
+        } else if (questionText.length > 0) {
+          userPrompt = `User question: ${questionText}\n\nWrite your assistant reply.`;
+        } else {
+          userPrompt = 'No transcript or question provided. Please provide a question or wait for the conversation to begin.';
+        }
         break;
     }
 
@@ -360,13 +384,18 @@ aiWss.on('connection', (ws) => {
       cancelled = false;
 
       const { turns, mode, question } = data ?? {};
-      if (!Array.isArray(turns) || turns.length === 0) {
+      if (!Array.isArray(turns)) {
         return send({ type: 'ai_error', requestId, status: 400, message: 'Missing turns[]' });
       }
 
       const questionText = typeof question === 'string' ? question.trim() : '';
       if (questionText.length > 800) {
         return send({ type: 'ai_error', requestId, status: 400, message: 'Question too long (max 800 chars)' });
+      }
+
+      // Allow empty turns if a question is provided
+      if (turns.length === 0 && questionText.length === 0) {
+        return send({ type: 'ai_error', requestId, status: 400, message: 'Missing turns[] or question' });
       }
 
       if (turns.length > 50) {
@@ -380,8 +409,9 @@ aiWss.on('connection', (ws) => {
         }))
         .filter((t) => t.text.length > 0);
 
-      if (normalized.length === 0) {
-        return send({ type: 'ai_error', requestId, status: 400, message: 'All turns were empty' });
+      // Allow empty normalized turns if a question is provided
+      if (normalized.length === 0 && questionText.length === 0) {
+        return send({ type: 'ai_error', requestId, status: 400, message: 'All turns were empty and no question provided' });
       }
 
       const totalChars = normalized.reduce((sum, t) => sum + t.text.length, 0);
@@ -409,22 +439,40 @@ aiWss.on('connection', (ws) => {
         case 'summary':
           systemPrompt =
             'You are HearNow, an interview assistant. Summarize the interview conversation so far into concise bullet points. Include key topics discussed, candidate responses, and any notable points. If action items or follow-ups exist, list them separately.';
-          userPrompt = `Interview transcript:\n${historyText}\n\nProvide a concise summary of this interview.`;
+          if (historyText.length > 0) {
+            userPrompt = `Interview transcript:\n${historyText}\n\nProvide a concise summary of this interview.`;
+          } else {
+            userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+          }
           break;
         case 'insights':
           systemPrompt =
             'You are HearNow, an interview assistant. Analyze the interview transcript and provide key insights about the candidate. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
-          userPrompt = `Interview transcript:\n${historyText}\n\nProvide key insights about this interview and candidate.`;
+          if (historyText.length > 0) {
+            userPrompt = `Interview transcript:\n${historyText}\n\nProvide key insights about this interview and candidate.`;
+          } else {
+            userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+          }
           break;
         case 'questions':
           systemPrompt =
             'You are HearNow, an interview assistant. Based on the interview transcript so far, suggest 3-5 relevant follow-up questions the interviewer should ask. Consider what has been discussed, what gaps exist, and what would help make a better hiring decision. Format as a numbered list.';
-          userPrompt = `Interview transcript:\n${historyText}\n\nSuggest relevant follow-up questions for this interview.`;
+          if (historyText.length > 0) {
+            userPrompt = `Interview transcript:\n${historyText}\n\nSuggest relevant follow-up questions for this interview.`;
+          } else {
+            userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+          }
           break;
         default:
           systemPrompt =
             'You are HearNow, an interview assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
-          userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
+          if (historyText.length > 0) {
+            userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
+          } else if (questionText.length > 0) {
+            userPrompt = `User question: ${questionText}\n\nWrite your assistant reply.`;
+          } else {
+            userPrompt = 'No transcript or question provided. Please provide a question or wait for the conversation to begin.';
+          }
           break;
       }
 

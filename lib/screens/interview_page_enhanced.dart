@@ -21,7 +21,6 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   final ScrollController _transcriptScrollController = ScrollController();
   final TextEditingController _askAiController = TextEditingController();
   final TextEditingController _aiResponseController = TextEditingController();
-  final TextEditingController _sessionTitleController = TextEditingController();
   int _lastBubbleCount = 0;
   String _lastTailSignature = '';
   String _suggestedQuestions = '';
@@ -33,6 +32,12 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   Timer? _recordingTimer;
   DateTime? _recordingStartedAt;
   bool _showMarkers = true;
+  bool _useMic = true;
+  bool _autoAsk = false;
+  bool _showConversationControls = true;
+  bool _showAiControls = true;
+  bool _showConversationPanel = true;
+  bool _showAiPanel = true;
 
   @override
   void initState() {
@@ -68,7 +73,6 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     _transcriptScrollController.dispose();
     _askAiController.dispose();
     _aiResponseController.dispose();
-    _sessionTitleController.dispose();
     _speechProvider?.removeListener(_syncBubblesToSession);
     super.dispose();
   }
@@ -432,7 +436,39 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
 
   Future<void> _saveSession() async {
     final interviewProvider = context.read<InterviewProvider>();
-    final title = _sessionTitleController.text.trim();
+    final currentSession = interviewProvider.currentSession;
+    final currentTitle = currentSession?.title ?? '';
+    
+    final titleController = TextEditingController(text: currentTitle);
+    
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save Session'),
+        content: TextField(
+          controller: titleController,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Session Name',
+            hintText: 'Enter session name',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(titleController.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    
+    if (title == null) return; // User cancelled
     
     await interviewProvider.saveCurrentSession(
       title: title.isNotEmpty ? title : null,
@@ -527,11 +563,41 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Small top status row (kept minimal; primary controls are docked at bottom)
+        // Small top status row with connection state and optional checkboxes
         SizedBox(
           height: dockButtonSize,
           child: Row(
             children: [
+              // Connection state indicator
+              Tooltip(
+                message: speechProvider.isConnected ? 'Connected' : 'Not connected',
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: speechProvider.isConnected ? Colors.green : Colors.grey,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Use mic checkbox
+              Checkbox(
+                value: _useMic,
+                onChanged: (value) => setState(() => _useMic = value ?? true),
+                visualDensity: VisualDensity.compact,
+              ),
+              const Text('Use mic', style: TextStyle(fontSize: 13)),
+              const SizedBox(width: 16),
+              // Auto Ask checkbox
+              Checkbox(
+                value: _autoAsk,
+                onChanged: (value) => setState(() => _autoAsk = value ?? false),
+                visualDensity: VisualDensity.compact,
+              ),
+              const Text('Auto Ask', style: TextStyle(fontSize: 13)),
+              const Spacer(),
+              // Recording status
               if (isRec) ...[
                 Container(
                   width: 10,
@@ -547,7 +613,6 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 ),
               ] else
                 const Text('Ready', style: TextStyle(color: Colors.black54)),
-              const Spacer(),
             ],
           ),
         ),
@@ -566,68 +631,94 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 ),
                 child: _buildTranscript(speechProvider),
               ),
+              if (_showConversationControls)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        decoration: dockDecoration,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 10,
+                          runSpacing: 8,
+                          children: [
+                            if (isRec)
+                              IconButton.outlined(
+                                onPressed: speechProvider.stopRecording,
+                                tooltip: 'Stop (Ctrl+R)',
+                                icon: const Icon(Icons.stop),
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(dockButtonSize, dockButtonSize),
+                                  maximumSize: const Size(dockButtonSize, dockButtonSize),
+                                  padding: EdgeInsets.zero,
+                                  iconSize: 22,
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red, width: 2),
+                                ),
+                              )
+                            else
+                              IconButton.filled(
+                                onPressed: speechProvider.startRecording,
+                                tooltip: 'Record (Ctrl+R)',
+                                icon: const Icon(Icons.mic),
+                                style: IconButton.styleFrom(
+                                  minimumSize: const Size(dockButtonSize, dockButtonSize),
+                                  maximumSize: const Size(dockButtonSize, dockButtonSize),
+                                  padding: EdgeInsets.zero,
+                                  iconSize: 22,
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            IconButton.outlined(
+                              onPressed: _markMoment,
+                              tooltip: 'Mark moment (Ctrl+M)',
+                              icon: const Icon(Icons.bookmark_add_outlined),
+                              style: dockButtonStyle,
+                            ),
+                            IconButton.outlined(
+                              onPressed: isRec ? null : speechProvider.clearTranscript,
+                              tooltip: 'Clear transcript',
+                              icon: const Icon(Icons.clear),
+                              style: dockButtonStyle,
+                            ),
+                            IconButton.outlined(
+                              onPressed: interviewProvider.isLoading ? null : _saveSession,
+                              tooltip: 'Save session (Ctrl+S)',
+                              icon: const Icon(Icons.save),
+                              style: dockButtonStyle,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // Toggle conversation controls button
               Align(
-                alignment: Alignment.bottomCenter,
+                alignment: Alignment.bottomLeft,
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.only(left: 12, bottom: 12),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(8),
                     child: Container(
                       decoration: dockDecoration,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Wrap(
-                        alignment: WrapAlignment.center,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 10,
-                        runSpacing: 8,
-                        children: [
-                          if (isRec)
-                            IconButton.outlined(
-                              onPressed: speechProvider.stopRecording,
-                              tooltip: 'Stop (Ctrl+R)',
-                              icon: const Icon(Icons.stop),
-                              style: IconButton.styleFrom(
-                                minimumSize: const Size(dockButtonSize, dockButtonSize),
-                                maximumSize: const Size(dockButtonSize, dockButtonSize),
-                                padding: EdgeInsets.zero,
-                                iconSize: 22,
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red, width: 2),
-                              ),
-                            )
-                          else
-                            IconButton.filled(
-                              onPressed: speechProvider.startRecording,
-                              tooltip: 'Record (Ctrl+R)',
-                              icon: const Icon(Icons.mic),
-                              style: IconButton.styleFrom(
-                                minimumSize: const Size(dockButtonSize, dockButtonSize),
-                                maximumSize: const Size(dockButtonSize, dockButtonSize),
-                                padding: EdgeInsets.zero,
-                                iconSize: 22,
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                              ),
-                            ),
-                          IconButton.outlined(
-                            onPressed: _markMoment,
-                            tooltip: 'Mark moment (Ctrl+M)',
-                            icon: const Icon(Icons.bookmark_add_outlined),
-                            style: dockButtonStyle,
-                          ),
-                          IconButton.outlined(
-                            onPressed: isRec ? null : speechProvider.clearTranscript,
-                            tooltip: 'Clear transcript',
-                            icon: const Icon(Icons.clear),
-                            style: dockButtonStyle,
-                          ),
-                          IconButton.outlined(
-                            onPressed: interviewProvider.isLoading ? null : _saveSession,
-                            tooltip: 'Save session (Ctrl+S)',
-                            icon: const Icon(Icons.save),
-                            style: dockButtonStyle,
-                          ),
-                        ],
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: IconButton(
+                        icon: Icon(_showConversationControls ? Icons.visibility_off : Icons.visibility),
+                        tooltip: _showConversationControls ? 'Hide conversation controls' : 'Show conversation controls',
+                        onPressed: () => setState(() => _showConversationControls = !_showConversationControls),
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(28, 28),
+                          maximumSize: const Size(28, 28),
+                          padding: EdgeInsets.zero,
+                          iconSize: 14,
+                        ),
                       ),
                     ),
                   ),
@@ -667,123 +758,181 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
       ],
     );
     if (!twoColumn) {
-      // In single-column mode, make the AI panel scrollable.
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          return ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              // Buttons
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: interviewProvider.isGeneratingSummary
-                        ? null
-                        : () async {
-                            await interviewProvider.generateSummary();
-                            final s = interviewProvider.currentSession?.summary ?? '';
-                            await _showTextDialog(title: 'Summary', text: s);
-                          },
-                    icon: interviewProvider.isGeneratingSummary
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.summarize),
-                    label: const Text('Summary'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: interviewProvider.isGeneratingInsights
-                        ? null
-                        : () async {
-                            await interviewProvider.generateInsights();
-                            final s = interviewProvider.currentSession?.insights ?? '';
-                            await _showTextDialog(title: 'Insights', text: s);
-                          },
-                    icon: interviewProvider.isGeneratingInsights
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.insights),
-                    label: const Text('Insights'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: interviewProvider.isGeneratingQuestions
-                        ? null
-                        : () async {
-                            await _generateSuggestedQuestions();
-                            await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
-                          },
-                    icon: interviewProvider.isGeneratingQuestions
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.help_outline),
-                    label: const Text('Questions'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: interviewProvider.markers.isEmpty ? null : () => _showMarkersDialog(interviewProvider),
-                    icon: const Icon(Icons.bookmarks_outlined),
-                    label: const Text('Markers'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Ask AI
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _askAiController,
-                      enabled: !speechProvider.isAiLoading,
-                      decoration: const InputDecoration(
-                        labelText: 'Ask AI (optional)',
-                        hintText: 'e.g., \"What should I ask next?\"',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (value) => speechProvider.askAi(question: value),
+      // In single-column mode, use the same layout structure as two-column mode
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Prompt input + Ask button ABOVE the AI response field (same as two-column)
+          SizedBox(
+            height: dockButtonSize,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _askAiController,
+                    enabled: !speechProvider.isAiLoading,
+                    decoration: const InputDecoration(
+                      hintText: 'Ask AI… (Ctrl+Enter)',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.quiz),
-                    tooltip: 'Question Templates',
-                    onPressed: _showQuestionTemplates,
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: speechProvider.isAiLoading
-                        ? null
-                        : () => speechProvider.askAi(question: _askAiController.text),
-                    icon: speechProvider.isAiLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.auto_awesome),
-                    label: Text(speechProvider.isAiLoading ? 'Asking…' : 'Ask (Ctrl+Enter)'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              SizedBox(
-                height: 240,
-                child: TextField(
-                  controller: _aiResponseController,
-                  readOnly: true,
-                  minLines: null,
-                  maxLines: null,
-                  expands: true,
-                  decoration: const InputDecoration(
-                    labelText: 'AI Response',
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (value) => speechProvider.askAi(question: value),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+                const SizedBox(width: 10),
+                IconButton.outlined(
+                  tooltip: 'Templates',
+                  onPressed: _showQuestionTemplates,
+                  icon: const Icon(Icons.quiz),
+                  style: dockButtonStyle,
+                ),
+                const SizedBox(width: 10),
+                IconButton.filled(
+                  tooltip: 'Ask (Ctrl+Enter)',
+                  onPressed: speechProvider.isAiLoading
+                      ? null
+                      : () => speechProvider.askAi(question: _askAiController.text),
+                  icon: speechProvider.isAiLoading
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.auto_awesome),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(dockButtonSize, dockButtonSize),
+                    maximumSize: const Size(dockButtonSize, dockButtonSize),
+                    padding: EdgeInsets.zero,
+                    iconSize: 22,
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // AI Response field that expands (same as two-column)
+          Expanded(
+            child: Stack(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: TextField(
+                    controller: _aiResponseController,
+                    readOnly: true,
+                    minLines: null,
+                    maxLines: null,
+                    expands: true,
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                if (_showAiControls)
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          decoration: dockDecoration,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 10,
+                            runSpacing: 8,
+                            children: [
+                              IconButton.outlined(
+                                tooltip: 'Summary',
+                                onPressed: interviewProvider.isGeneratingSummary
+                                    ? null
+                                    : () async {
+                                        await interviewProvider.generateSummary();
+                                        final s = interviewProvider.currentSession?.summary ?? '';
+                                        await _showTextDialog(title: 'Summary', text: s);
+                                      },
+                                icon: interviewProvider.isGeneratingSummary
+                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.summarize),
+                                style: dockButtonStyle,
+                              ),
+                              IconButton.outlined(
+                                tooltip: 'Insights',
+                                onPressed: interviewProvider.isGeneratingInsights
+                                    ? null
+                                    : () async {
+                                        await interviewProvider.generateInsights();
+                                        final s = interviewProvider.currentSession?.insights ?? '';
+                                        await _showTextDialog(title: 'Insights', text: s);
+                                      },
+                                icon: interviewProvider.isGeneratingInsights
+                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.insights),
+                                style: dockButtonStyle,
+                              ),
+                              IconButton.outlined(
+                                tooltip: 'Questions',
+                                onPressed: interviewProvider.isGeneratingQuestions
+                                    ? null
+                                    : () async {
+                                        await _generateSuggestedQuestions();
+                                        await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
+                                      },
+                                icon: interviewProvider.isGeneratingQuestions
+                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.help_outline),
+                                style: dockButtonStyle,
+                              ),
+                              IconButton.outlined(
+                                tooltip: 'Markers',
+                                onPressed: interviewProvider.markers.isEmpty ? null : () => _showMarkersDialog(interviewProvider),
+                                icon: const Icon(Icons.bookmarks_outlined),
+                                style: dockButtonStyle,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                // Toggle AI controls button
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12, bottom: 12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        decoration: dockDecoration,
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: IconButton(
+                          icon: Icon(_showAiControls ? Icons.visibility_off : Icons.visibility),
+                          tooltip: _showAiControls ? 'Hide AI controls' : 'Show AI controls',
+                          onPressed: () => setState(() => _showAiControls = !_showAiControls),
+                          style: IconButton.styleFrom(
+                            minimumSize: const Size(28, 28),
+                            maximumSize: const Size(28, 28),
+                            padding: EdgeInsets.zero,
+                            iconSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
 
@@ -863,23 +1012,24 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                   ),
                 ),
               ),
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      decoration: dockDecoration,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Wrap(
-                        alignment: WrapAlignment.center,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 10,
-                        runSpacing: 8,
-                        children: [
-                          IconButton.outlined(
-                            tooltip: 'Summary',
+              if (_showAiControls)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        decoration: dockDecoration,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Wrap(
+                          alignment: WrapAlignment.center,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: 10,
+                          runSpacing: 8,
+                          children: [
+                            IconButton.outlined(
+                              tooltip: 'Summary',
                             onPressed: interviewProvider.isGeneratingSummary
                                 ? null
                                 : () async {
@@ -931,6 +1081,31 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                   ),
                 ),
               ),
+              // Toggle AI controls button
+              Align(
+                alignment: Alignment.bottomRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12, bottom: 12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      decoration: dockDecoration,
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: IconButton(
+                        icon: Icon(_showAiControls ? Icons.visibility_off : Icons.visibility),
+                        tooltip: _showAiControls ? 'Hide AI controls' : 'Show AI controls',
+                        onPressed: () => setState(() => _showAiControls = !_showAiControls),
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(28, 28),
+                          maximumSize: const Size(28, 28),
+                          padding: EdgeInsets.zero,
+                          iconSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -955,9 +1130,6 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
         }
 
         final session = interviewProvider.currentSession;
-        if (_sessionTitleController.text.isEmpty && session != null) {
-          _sessionTitleController.text = session.title;
-        }
 
         final shortcuts = <ShortcutActivator, Intent>{
           const SingleActivator(LogicalKeyboardKey.keyR, control: true): const _ToggleRecordIntent(),
@@ -1017,13 +1189,39 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                     Row(
                       children: [
                         Expanded(
-                          child: TextField(
-                            controller: _sessionTitleController,
-                            decoration: const InputDecoration(
-                              labelText: 'Session Title',
-                              border: OutlineInputBorder(),
-                              isDense: true,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
+                            child: Text(
+                              session?.title ?? 'Untitled Session',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Toggle conversation panel visibility (always visible)
+                        Tooltip(
+                          message: _showConversationPanel ? 'Hide conversation' : 'Show conversation',
+                          child: IconButton(
+                            icon: Icon(_showConversationPanel ? Icons.chat_bubble_outline : Icons.chat_bubble_outline, size: 20),
+                            onPressed: () => setState(() => _showConversationPanel = !_showConversationPanel),
+                            visualDensity: VisualDensity.compact,
+                            iconSize: 20,
+                            color: _showConversationPanel ? Colors.blue : Colors.grey,
+                          ),
+                        ),
+                        // Toggle AI panel visibility (always visible)
+                        Tooltip(
+                          message: _showAiPanel ? 'Hide AI response' : 'Show AI response',
+                          child: IconButton(
+                            icon: Icon(_showAiPanel ? Icons.auto_awesome_outlined : Icons.auto_awesome_outlined, size: 20),
+                            onPressed: () => setState(() => _showAiPanel = !_showAiPanel),
+                            visualDensity: VisualDensity.compact,
+                            iconSize: 20,
+                            color: _showAiPanel ? Colors.deepPurple : Colors.grey,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1066,7 +1264,6 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                               );
                             } else if (value == 'new') {
                               interviewProvider.createNewSession();
-                              _sessionTitleController.clear();
                             }
                           },
                         ),
@@ -1101,50 +1298,71 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                       ),
 
                     Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          final twoColumn = constraints.maxWidth >= 900;
+                      child: Stack(
+                        children: [
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final twoColumn = constraints.maxWidth >= 900;
 
-                          if (!twoColumn) {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: _buildConversationPanel(speechProvider, interviewProvider),
-                                ),
-                                const SizedBox(height: 16),
-                                Expanded(
-                                  flex: 2,
-                                  child: _buildAiPanel(
-                                    speechProvider: speechProvider,
-                                    interviewProvider: interviewProvider,
-                                    session: session,
-                                    twoColumn: false,
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
+                              if (!twoColumn) {
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    if (_showConversationPanel)
+                                      Expanded(
+                                        flex: 3,
+                                        child: _buildConversationPanel(speechProvider, interviewProvider),
+                                      ),
+                                    if (_showConversationPanel && _showAiPanel) const SizedBox(height: 16),
+                                    if (_showAiPanel)
+                                      Expanded(
+                                        flex: 2,
+                                        child: _buildAiPanel(
+                                          speechProvider: speechProvider,
+                                          interviewProvider: interviewProvider,
+                                          session: session,
+                                          twoColumn: false,
+                                        ),
+                                      ),
+                                    if (!_showConversationPanel && !_showAiPanel)
+                                      const Expanded(
+                                        child: Center(
+                                          child: Text('Both panels are hidden', style: TextStyle(color: Colors.grey)),
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              }
 
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(child: _buildConversationPanel(speechProvider, interviewProvider)),
-                              const SizedBox(width: 16),
-                              VerticalDivider(width: 1, thickness: 1, color: Colors.grey.shade300),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _buildAiPanel(
-                                  speechProvider: speechProvider,
-                                  interviewProvider: interviewProvider,
-                                  session: session,
-                                  twoColumn: true,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (_showConversationPanel)
+                                    Expanded(child: _buildConversationPanel(speechProvider, interviewProvider)),
+                                  if (_showConversationPanel && _showAiPanel) const SizedBox(width: 16),
+                                  if (_showConversationPanel && _showAiPanel)
+                                    VerticalDivider(width: 1, thickness: 1, color: Colors.grey.shade300),
+                                  if (_showConversationPanel && _showAiPanel) const SizedBox(width: 16),
+                                  if (_showAiPanel)
+                                    Expanded(
+                                      child: _buildAiPanel(
+                                        speechProvider: speechProvider,
+                                        interviewProvider: interviewProvider,
+                                        session: session,
+                                        twoColumn: true,
+                                      ),
+                                    ),
+                                  if (!_showConversationPanel && !_showAiPanel)
+                                    const Expanded(
+                                      child: Center(
+                                        child: Text('Both panels are hidden', style: TextStyle(color: Colors.grey)),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   ],

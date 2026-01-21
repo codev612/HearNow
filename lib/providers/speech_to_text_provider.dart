@@ -205,15 +205,18 @@ class SpeechToTextProvider extends ChangeNotifier {
     }
     if (_isAiLoading) return;
 
+    final trimmedQuestion = question?.trim() ?? '';
     final turns = _buildAiTurns();
-    if (turns.isEmpty) {
+    
+    // If no custom question provided, try to use the last mic turn as question
+    final finalQuestion = trimmedQuestion.isNotEmpty ? trimmedQuestion : _defaultQuestionFromLastMicTurn();
+    
+    // Require transcript only if no question is provided (neither custom nor from transcript)
+    if (turns.isEmpty && finalQuestion == null) {
       _aiErrorMessage = 'No transcript yet';
       notifyListeners();
       return;
     }
-
-    final trimmedQuestion = question?.trim() ?? '';
-    final finalQuestion = trimmedQuestion.isNotEmpty ? trimmedQuestion : _defaultQuestionFromLastMicTurn();
 
     _isAiLoading = true;
     _aiErrorMessage = '';

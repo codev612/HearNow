@@ -16,18 +16,7 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final title = switch (_index) {
-      0 => 'Home',
-      1 => 'Interview',
-      2 => 'Settings',
-      _ => 'HearNow',
-    };
-
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(title),
-      ),
       body: SafeArea(
         child: IndexedStack(
           index: _index,
