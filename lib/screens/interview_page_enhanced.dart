@@ -485,6 +485,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
 
     return ListView.builder(
       controller: _transcriptScrollController,
+      // No bottom padding: allow content to sit “under” the transparent dock.
+      padding: EdgeInsets.zero,
       itemCount: bubbles.length,
       itemBuilder: (context, index) {
         final b = bubbles[index];
@@ -506,6 +508,20 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
       maximumSize: const Size(dockButtonSize, dockButtonSize),
       padding: EdgeInsets.zero,
       iconSize: 22,
+    );
+
+    final dockDecoration = BoxDecoration(
+      // More transparent so underlying text is clearly visible through the bar.
+      color: Colors.white.withValues(alpha: 0.42),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.10),
+          blurRadius: 14,
+          offset: const Offset(0, 6),
+        ),
+      ],
     );
 
     return Column(
@@ -542,7 +558,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
           child: Stack(
             children: [
               Container(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 92), // leave space for dock
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(8),
@@ -554,9 +570,10 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Card(
-                    elevation: 6,
-                    child: Padding(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      decoration: dockDecoration,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Wrap(
                         alignment: WrapAlignment.center,
@@ -564,19 +581,34 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                         spacing: 10,
                         runSpacing: 8,
                         children: [
-                          IconButton.filled(
-                            onPressed: isRec ? speechProvider.stopRecording : speechProvider.startRecording,
-                            tooltip: isRec ? 'Stop (Ctrl+R)' : 'Record (Ctrl+R)',
-                            icon: Icon(isRec ? Icons.stop : Icons.mic),
-                            style: IconButton.styleFrom(
-                              minimumSize: const Size(dockButtonSize, dockButtonSize),
-                              maximumSize: const Size(dockButtonSize, dockButtonSize),
-                              padding: EdgeInsets.zero,
-                              iconSize: 22,
-                              backgroundColor: isRec ? Colors.red : Colors.blue,
-                              foregroundColor: Colors.white,
+                          if (isRec)
+                            IconButton.outlined(
+                              onPressed: speechProvider.stopRecording,
+                              tooltip: 'Stop (Ctrl+R)',
+                              icon: const Icon(Icons.stop),
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(dockButtonSize, dockButtonSize),
+                                maximumSize: const Size(dockButtonSize, dockButtonSize),
+                                padding: EdgeInsets.zero,
+                                iconSize: 22,
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red, width: 2),
+                              ),
+                            )
+                          else
+                            IconButton.filled(
+                              onPressed: speechProvider.startRecording,
+                              tooltip: 'Record (Ctrl+R)',
+                              icon: const Icon(Icons.mic),
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(dockButtonSize, dockButtonSize),
+                                maximumSize: const Size(dockButtonSize, dockButtonSize),
+                                padding: EdgeInsets.zero,
+                                iconSize: 22,
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                              ),
                             ),
-                          ),
                           IconButton.outlined(
                             onPressed: _markMoment,
                             tooltip: 'Mark moment (Ctrl+M)',
@@ -620,6 +652,19 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
       maximumSize: const Size(dockButtonSize, dockButtonSize),
       padding: EdgeInsets.zero,
       iconSize: 22,
+    );
+    final dockDecoration = BoxDecoration(
+      // More transparent so underlying text is clearly visible through the bar.
+      color: Colors.white.withValues(alpha: 0.42),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.10),
+          blurRadius: 14,
+          offset: const Offset(0, 6),
+        ),
+      ],
     );
     if (!twoColumn) {
       // In single-column mode, make the AI panel scrollable.
@@ -799,7 +844,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
           child: Stack(
             children: [
               Container(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 92), // leave space for dock
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade100,
                   borderRadius: BorderRadius.circular(8),
@@ -813,6 +858,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                   expands: true,
                   decoration: const InputDecoration(
                     border: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.zero,
                   ),
                 ),
               ),
@@ -820,9 +867,10 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Card(
-                    elevation: 6,
-                    child: Padding(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      decoration: dockDecoration,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       child: Wrap(
                         alignment: WrapAlignment.center,
