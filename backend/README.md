@@ -24,6 +24,13 @@ cp .env.example .env
 DEEPGRAM_API_KEY=your_actual_api_key_here
 ```
 
+4. (Optional) Enable AI responses by adding your OpenAI API key:
+```
+OPENAI_API_KEY=your_actual_api_key_here
+# Optional
+# OPENAI_MODEL=gpt-4o-mini
+```
+
 ## Running the Server
 
 Development mode (with auto-reload):
@@ -42,6 +49,25 @@ The server will start on port 3000 by default.
 
 - **GET /health** - Health check endpoint
 - **WebSocket /listen** - WebSocket endpoint for audio streaming
+- **POST /ai/respond** - Generate an AI reply from transcript turns
+
+### POST /ai/respond
+
+Request body:
+```json
+{
+  "mode": "reply",
+  "turns": [
+    {"source": "mic", "text": "Hello"},
+    {"source": "system", "text": "Hi there"}
+  ]
+}
+```
+
+Response:
+```json
+{ "text": "..." }
+```
 
 ## WebSocket Protocol
 

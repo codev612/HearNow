@@ -5,11 +5,13 @@ import 'dart:io' show Platform;
 import '../services/transcription_service.dart';
 import '../services/audio_capture_service.dart';
 import '../services/windows_audio_service.dart';
+import '../services/ai_service.dart';
 import '../models/transcript_bubble.dart';
 
 class SpeechToTextProvider extends ChangeNotifier {
   TranscriptionService? _transcriptionService;
   AudioCaptureService? _audioCaptureService;
+  AiService? _aiService;
   Timer? _mockAudioTimer;
   Timer? _systemAudioPollTimer;
   bool _isSystemAudioCapturing = false;
@@ -20,10 +22,18 @@ class SpeechToTextProvider extends ChangeNotifier {
   String _errorMessage = '';
   int _audioFrameCount = 0;
 
+  String _aiResponse = '';
+  String _aiErrorMessage = '';
+  bool _isAiLoading = false;
+
   bool get isRecording => _isRecording;
   bool get isConnected => _isConnected;
   List<TranscriptBubble> get bubbles => List.unmodifiable(_bubbles);
   String get errorMessage => _errorMessage;
+
+  String get aiResponse => _aiResponse;
+  String get aiErrorMessage => _aiErrorMessage;
+  bool get isAiLoading => _isAiLoading;
 
   String _appendWithOverlap(String existing, String next) {
     final nextTrimmed = next.trim();
@@ -119,8 +129,17 @@ class SpeechToTextProvider extends ChangeNotifier {
     return status.isGranted;
   }
 
-  Future<void> initialize(String serverUrl) async {
-    _transcriptionService = TranscriptionService(serverUrl: serverUrl);
+  Future<void> initialize({required String wsUrl, required String httpBaseUrl}) async {
+    _transcriptionService = TranscriptionService(serverUrl: wsUrl);
+    // Derive AI WS endpoint from the transcription WS endpoint (/listen -> /ai).
+    String? aiWsUrl;
+    try {
+      var v = wsUrl.trim();
+      if (v.endsWith('/listen')) {
+        aiWsUrl = v.substring(0, v.length - '/listen'.length) + '/ai';
+      }
+    } catch (_) {}
+    _aiService = AiService(httpBaseUrl: httpBaseUrl, aiWsUrl: aiWsUrl);
     
     _transcriptionService!.transcriptStream.listen(
       (result) {
@@ -143,6 +162,86 @@ class SpeechToTextProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+  }
+
+  List<Map<String, String>> _buildAiTurns({int maxTurns = 20}) {
+    final finals = _bubbles.where((b) => !b.isDraft).toList(growable: false);
+    final recent = finals.length > maxTurns ? finals.sublist(finals.length - maxTurns) : finals;
+
+    String sourceToString(TranscriptSource s) {
+      return switch (s) {
+        TranscriptSource.mic => 'mic',
+        TranscriptSource.system => 'system',
+        TranscriptSource.unknown => 'unknown',
+      };
+    }
+
+    return recent
+        .where((b) => b.text.trim().isNotEmpty)
+        .map((b) => {
+              'source': sourceToString(b.source),
+              'text': b.text.trim(),
+            })
+        .toList(growable: false);
+  }
+
+  String? _defaultQuestionFromLastMicTurn() {
+    for (var i = _bubbles.length - 1; i >= 0; i--) {
+      final b = _bubbles[i];
+      if (b.isDraft) continue;
+      if (b.source != TranscriptSource.mic) continue;
+      final t = b.text.trim();
+      if (t.isNotEmpty) return t;
+    }
+    return null;
+  }
+
+  Future<void> askAi({String? question}) async {
+    final ai = _aiService;
+    if (ai == null) {
+      _aiErrorMessage = 'AI service not initialized';
+      notifyListeners();
+      return;
+    }
+    if (_isAiLoading) return;
+
+    final turns = _buildAiTurns();
+    if (turns.isEmpty) {
+      _aiErrorMessage = 'No transcript yet';
+      notifyListeners();
+      return;
+    }
+
+    final trimmedQuestion = question?.trim() ?? '';
+    final finalQuestion = trimmedQuestion.isNotEmpty ? trimmedQuestion : _defaultQuestionFromLastMicTurn();
+
+    _isAiLoading = true;
+    _aiErrorMessage = '';
+    _aiResponse = '';
+    notifyListeners();
+
+    try {
+      // If AI WS is configured, stream token deltas for a more responsive UI.
+      if (ai.aiWsUrl != null) {
+        await for (final delta in ai.streamRespond(
+          turns: turns,
+          question: finalQuestion,
+          mode: 'reply',
+        )) {
+          _aiResponse += delta;
+          notifyListeners();
+        }
+      } else {
+        final text = await ai.respond(turns: turns, question: finalQuestion, mode: 'reply');
+        _aiResponse = text;
+      }
+      _aiErrorMessage = '';
+    } catch (e) {
+      _aiErrorMessage = e.toString();
+    } finally {
+      _isAiLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> startRecording() async {
@@ -267,6 +366,8 @@ class SpeechToTextProvider extends ChangeNotifier {
   void clearTranscript() {
     _bubbles.clear();
     _errorMessage = '';
+    _aiResponse = '';
+    _aiErrorMessage = '';
     notifyListeners();
   }
 
@@ -275,6 +376,7 @@ class SpeechToTextProvider extends ChangeNotifier {
     _mockAudioTimer?.cancel();
     _audioCaptureService?.dispose();
     _transcriptionService?.dispose();
+    _aiService?.dispose();
     super.dispose();
   }
 }

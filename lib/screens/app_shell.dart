@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'home_page.dart';
 import 'settings_page.dart';
-import 'home_screen.dart';
+import 'interview_page_enhanced.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -35,7 +35,7 @@ class _AppShellState extends State<AppShell> {
             HomePage(
               onStartInterview: () => setState(() => _index = 1),
             ),
-            const InterviewPage(),
+            const InterviewPageEnhanced(),
             const SettingsPage(),
           ],
         ),

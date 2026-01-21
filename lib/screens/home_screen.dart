@@ -13,6 +13,8 @@ class InterviewPage extends StatefulWidget {
 
 class _InterviewPageState extends State<InterviewPage> {
   final ScrollController _transcriptScrollController = ScrollController();
+  final TextEditingController _askAiController = TextEditingController();
+  final TextEditingController _aiResponseController = TextEditingController();
   int _lastBubbleCount = 0;
   String _lastTailSignature = '';
 
@@ -81,13 +83,18 @@ class _InterviewPageState extends State<InterviewPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<SpeechToTextProvider>();
-      provider.initialize(AppConfig.serverWebSocketUrl);
+      provider.initialize(
+        wsUrl: AppConfig.serverWebSocketUrl,
+        httpBaseUrl: AppConfig.serverHttpBaseUrl,
+      );
     });
   }
 
   @override
   void dispose() {
     _transcriptScrollController.dispose();
+    _askAiController.dispose();
+    _aiResponseController.dispose();
     super.dispose();
   }
 
@@ -96,6 +103,17 @@ class _InterviewPageState extends State<InterviewPage> {
     return Consumer<SpeechToTextProvider>(
       builder: (context, provider, child) {
         _maybeAutoScroll(provider);
+
+        final aiText = provider.aiErrorMessage.isNotEmpty
+            ? 'Error: ${provider.aiErrorMessage}'
+            : provider.aiResponse;
+        if (_aiResponseController.text != aiText) {
+          _aiResponseController.text = aiText;
+          _aiResponseController.selection = TextSelection.collapsed(
+            offset: _aiResponseController.text.length,
+          );
+        }
+
         return Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -190,6 +208,56 @@ class _InterviewPageState extends State<InterviewPage> {
                       );
                     },
                   ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Ask AI + AI Response (separate control)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _askAiController,
+                      enabled: !provider.isAiLoading,
+                      decoration: const InputDecoration(
+                        labelText: 'Ask AI (optional)',
+                        hintText: 'e.g., “What should I ask next?”',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (value) {
+                        provider.askAi(question: value);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: provider.isAiLoading
+                        ? null
+                        : () {
+                            provider.askAi(question: _askAiController.text);
+                          },
+                    icon: provider.isAiLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.auto_awesome),
+                    label: Text(provider.isAiLoading ? 'Asking…' : 'Ask AI'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _aiResponseController,
+                readOnly: true,
+                minLines: 3,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  labelText: 'AI Response',
+                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: 16),

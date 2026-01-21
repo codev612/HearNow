@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/speech_to_text_provider.dart';
+import 'providers/interview_provider.dart';
+import 'services/ai_service.dart';
+import 'config/app_config.dart';
 import 'screens/app_shell.dart';
 
 void main() {
@@ -12,8 +15,27 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => SpeechToTextProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => SpeechToTextProvider(),
+        ),
+        ChangeNotifierProxyProvider<SpeechToTextProvider, InterviewProvider>(
+          create: (_) => InterviewProvider(
+            aiService: AiService(
+              httpBaseUrl: AppConfig.serverHttpBaseUrl,
+              aiWsUrl: AppConfig.serverAiWebSocketUrl,
+            ),
+          ),
+          update: (_, speechProvider, previous) => previous ??
+              InterviewProvider(
+                aiService: AiService(
+                  httpBaseUrl: AppConfig.serverHttpBaseUrl,
+                  aiWsUrl: AppConfig.serverAiWebSocketUrl,
+                ),
+              ),
+        ),
+      ],
       child: MaterialApp(
         title: 'HearNow',
         theme: ThemeData(
