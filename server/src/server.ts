@@ -43,6 +43,10 @@ connectDB().catch((error) => {
   process.exit(1);
 });
 
+// Import and initialize email service after dotenv is loaded
+import { initializeMailgun } from './emailService.js';
+initializeMailgun();
+
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 

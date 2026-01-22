@@ -7,7 +7,9 @@ import 'dart:io' show Platform;
 import 'home_page.dart';
 import 'settings_page.dart';
 import 'interview_page_enhanced.dart';
+import 'signin_page.dart';
 import '../providers/shortcuts_provider.dart';
+import '../providers/auth_provider.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -17,12 +19,33 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 1; // default to Interview
+  int _index = 0; // default to Home
+  bool _wasAuthenticated = false;
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ShortcutsProvider>(
-      builder: (context, shortcutsProvider, child) {
+    return Consumer<AuthProvider>(
+      builder: (context, authProvider, _) {
+        // Show signin page if not authenticated
+        if (!authProvider.isAuthenticated) {
+          _wasAuthenticated = false;
+          return const SignInPage();
+        }
+
+        // Reset to home page when user just signed in
+        if (!_wasAuthenticated && authProvider.isAuthenticated) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _index = 0; // Go to home page after sign in
+              });
+            }
+          });
+        }
+        _wasAuthenticated = true;
+
+        return Consumer<ShortcutsProvider>(
+          builder: (context, shortcutsProvider, child) {
         // Get toggle hide shortcut from provider
         final toggleHide = shortcutsProvider.getShortcutActivator('toggleHide');
         final shortcuts = <ShortcutActivator, Intent>{};
@@ -119,6 +142,8 @@ class _AppShellState extends State<AppShell> {
             ),
           ),
         ),
+      );
+        },
       );
       },
     );

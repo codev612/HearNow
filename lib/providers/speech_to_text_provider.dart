@@ -129,8 +129,8 @@ class SpeechToTextProvider extends ChangeNotifier {
     return status.isGranted;
   }
 
-  Future<void> initialize({required String wsUrl, required String httpBaseUrl}) async {
-    _transcriptionService = TranscriptionService(serverUrl: wsUrl);
+  Future<void> initialize({required String wsUrl, required String httpBaseUrl, String? authToken}) async {
+    _transcriptionService = TranscriptionService(serverUrl: wsUrl, authToken: authToken);
     // Derive AI WS endpoint from the transcription WS endpoint (/listen -> /ai).
     String? aiWsUrl;
     try {
@@ -139,7 +139,7 @@ class SpeechToTextProvider extends ChangeNotifier {
         aiWsUrl = v.substring(0, v.length - '/listen'.length) + '/ai';
       }
     } catch (_) {}
-    _aiService = AiService(httpBaseUrl: httpBaseUrl, aiWsUrl: aiWsUrl);
+    _aiService = AiService(httpBaseUrl: httpBaseUrl, aiWsUrl: aiWsUrl, authToken: authToken);
     
     _transcriptionService!.transcriptStream.listen(
       (result) {
@@ -162,6 +162,11 @@ class SpeechToTextProvider extends ChangeNotifier {
         notifyListeners();
       },
     );
+  }
+
+  void updateAuthToken(String? token) {
+    _transcriptionService?.setAuthToken(token);
+    _aiService?.setAuthToken(token);
   }
 
   List<Map<String, String>> _buildAiTurns({int maxTurns = 20}) {

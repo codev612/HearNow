@@ -7,7 +7,7 @@ import '../services/ai_service.dart';
 
 class InterviewProvider extends ChangeNotifier {
   final InterviewStorageService _storage = InterviewStorageService();
-  final AiService? _aiService;
+  AiService? _aiService;
 
   InterviewSession? _currentSession;
   List<InterviewSession> _sessions = [];
@@ -18,6 +18,14 @@ class InterviewProvider extends ChangeNotifier {
   bool _isGeneratingQuestions = false;
 
   InterviewProvider({AiService? aiService}) : _aiService = aiService;
+
+  void setAiService(AiService? aiService) {
+    _aiService = aiService;
+  }
+
+  void updateAuthToken(String? token) {
+    _aiService?.setAuthToken(token);
+  }
 
   InterviewSession? get currentSession => _currentSession;
   List<InterviewSession> get sessions => List.unmodifiable(_sessions);

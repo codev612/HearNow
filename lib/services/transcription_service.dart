@@ -9,10 +9,15 @@ class TranscriptionService {
   bool _disconnecting = false;
 
   final String serverUrl;
+  String? _authToken;
   final StreamController<TranscriptionResult> _transcriptController =
       StreamController<TranscriptionResult>.broadcast();
 
-  TranscriptionService({required this.serverUrl});
+  TranscriptionService({required this.serverUrl, String? authToken}) : _authToken = authToken;
+
+  void setAuthToken(String? token) {
+    _authToken = token;
+  }
 
   Stream<TranscriptionResult> get transcriptStream => _transcriptController.stream;
   bool get isConnected => _channel != null;
@@ -20,7 +25,16 @@ class TranscriptionService {
   Future<void> connect() async {
     try {
       print('[TranscriptionService] Connecting to: $serverUrl');
-      _channel = WebSocketChannel.connect(Uri.parse(serverUrl));
+      // Build WebSocket URL with auth token if available
+      var wsUrl = serverUrl;
+      if (_authToken != null && _authToken!.isNotEmpty) {
+        final uri = Uri.parse(wsUrl);
+        wsUrl = uri.replace(queryParameters: {
+          ...uri.queryParameters,
+          'token': _authToken!,
+        }).toString();
+      }
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
       _channel!.stream.listen(
         (message) {

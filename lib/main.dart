@@ -5,6 +5,7 @@ import 'dart:io' show Platform;
 import 'providers/speech_to_text_provider.dart';
 import 'providers/interview_provider.dart';
 import 'providers/shortcuts_provider.dart';
+import 'providers/auth_provider.dart';
 import 'services/ai_service.dart';
 import 'config/app_config.dart';
 import 'screens/app_shell.dart';
@@ -44,6 +45,9 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
+          create: (_) => AuthProvider(),
+        ),
+        ChangeNotifierProvider(
           create: (_) => SpeechToTextProvider(),
         ),
         ChangeNotifierProxyProvider<SpeechToTextProvider, InterviewProvider>(
@@ -60,9 +64,6 @@ class MyApp extends StatelessWidget {
                   aiWsUrl: AppConfig.serverAiWebSocketUrl,
                 ),
               ),
-        ),
-        ChangeNotifierProvider(
-          create: (_) => ShortcutsProvider(              ),
         ),
         ChangeNotifierProvider(
           create: (_) => ShortcutsProvider(),

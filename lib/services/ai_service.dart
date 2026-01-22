@@ -12,17 +12,37 @@ class AiService {
   /// Example: `ws://localhost:3000/ai`
   final String? aiWsUrl;
 
+  String? _authToken;
   WebSocketChannel? _aiChannel;
   StreamSubscription? _aiSub;
   final Map<String, StreamController<String>> _streams = {};
 
-  AiService({required this.httpBaseUrl, this.aiWsUrl});
+  AiService({required this.httpBaseUrl, this.aiWsUrl, String? authToken}) : _authToken = authToken;
+
+  void setAuthToken(String? token) {
+    _authToken = token;
+    // Disconnect existing connection if token changes
+    if (_aiChannel != null) {
+      disconnectAi();
+    }
+  }
 
   Future<void> _ensureAiConnected() async {
     if (aiWsUrl == null) return;
     if (_aiChannel != null) return;
+    if (_authToken == null || _authToken!.isEmpty) {
+      throw Exception('Authentication required');
+    }
 
-    _aiChannel = WebSocketChannel.connect(Uri.parse(aiWsUrl!));
+    // Build WebSocket URL with auth token
+    var wsUrl = aiWsUrl!;
+    final uri = Uri.parse(wsUrl);
+    wsUrl = uri.replace(queryParameters: {
+      ...uri.queryParameters,
+      'token': _authToken!,
+    }).toString();
+
+    _aiChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
     _aiSub = _aiChannel!.stream.listen(
       (message) {
         try {
@@ -155,10 +175,17 @@ class AiService {
     final q = question?.trim() ?? '';
     if (q.isNotEmpty) payload['question'] = q;
 
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (_authToken != null && _authToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $_authToken';
+    }
+
     final response = await http
         .post(
           uri,
-          headers: const {'Content-Type': 'application/json'},
+          headers: headers,
           body: jsonEncode(payload),
         )
         .timeout(timeout);

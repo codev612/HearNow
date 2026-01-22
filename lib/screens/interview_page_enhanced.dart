@@ -5,6 +5,7 @@ import 'dart:async';
 import '../config/app_config.dart';
 import '../providers/speech_to_text_provider.dart';
 import '../providers/interview_provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/interview_session.dart';
 import '../models/transcript_bubble.dart';
 import '../services/interview_question_service.dart';
@@ -44,13 +45,19 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = context.read<AuthProvider>();
       _speechProvider = context.read<SpeechToTextProvider>();
       _interviewProvider = context.read<InterviewProvider>();
       
+      final authToken = authProvider.token;
       _speechProvider!.initialize(
         wsUrl: AppConfig.serverWebSocketUrl,
         httpBaseUrl: AppConfig.serverHttpBaseUrl,
+        authToken: authToken,
       );
+      
+      // Update AI service with auth token
+      _interviewProvider!.updateAuthToken(authToken);
 
       // Create new session if none exists
       if (_interviewProvider!.currentSession == null) {

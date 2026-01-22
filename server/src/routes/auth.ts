@@ -3,22 +3,34 @@ import {
   createUser,
   getUserByEmail,
   getUserById,
+  getUserByIdFull,
   getUserByVerificationToken,
+  getUserByVerificationCode,
   getUserByResetToken,
   markEmailVerified,
   setVerificationToken,
+  setVerificationCode,
+  generateVerificationCode,
   setResetToken,
   updatePassword,
+  updateUserName,
+  updateUserEmail,
+  setPendingEmailChange,
+  verifyCurrentEmailForChange,
+  setNewEmailCode,
+  verifyNewEmailForChange,
+  clearPendingEmailChange,
   generateToken as generateDbToken,
 } from '../database.js';
 import { hashPassword, verifyPassword, generateToken } from '../auth.js';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../emailService.js';
+import { sendVerificationEmail, sendPasswordResetEmail, sendProfileChangeAlert } from '../emailService.js';
 import { authenticate, AuthRequest } from '../auth.js';
 
 const router = express.Router();
 
 interface SignupBody {
   email?: string;
+  name?: string;
   password?: string;
 }
 
@@ -40,14 +52,33 @@ interface ResetPasswordBody {
   password?: string;
 }
 
+interface UpdateProfileBody {
+  name?: string;
+  email?: string;
+}
+
+interface ChangePasswordBody {
+  currentPassword?: string;
+  newPassword?: string;
+}
+
 // Signup
 router.post('/signup', async (req: Request<{}, {}, SignupBody>, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, name, password } = req.body;
 
     // Validation
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!email || !name || !password) {
+      return res.status(400).json({ error: 'Email, name, and password are required' });
+    }
+
+    // Name validation
+    const trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      return res.status(400).json({ error: 'Name cannot be empty' });
+    }
+    if (trimmedName.length < 2) {
+      return res.status(400).json({ error: 'Name must be at least 2 characters long' });
     }
 
     // Email validation
@@ -71,22 +102,37 @@ router.post('/signup', async (req: Request<{}, {}, SignupBody>, res: Response) =
     const passwordHash = await hashPassword(password);
 
     // Create user
-    const user = await createUser(email, passwordHash);
+    const user = await createUser(email, trimmedName, passwordHash);
 
-    // Send verification email
-    const emailSent = await sendVerificationEmail(email, user.verification_token);
+    // Send verification email with 6-digit code
+    const emailSent = await sendVerificationEmail(email, user.verification_code);
     if (!emailSent) {
-      console.warn(`Failed to send verification email to ${email}, but user was created`);
+      // In development, log the code to console if Mailgun is not configured
+      console.warn(`⚠ Mailgun not configured. Verification code for ${email}: ${user.verification_code}`);
+      console.warn(`⚠ For development: Use this code to verify the email`);
     }
 
-    return res.status(201).json({
-      message: 'User created successfully. Please check your email to verify your account.',
+    // In development mode (when Mailgun not configured), include code in response
+    const isDevelopment = !process.env.MAILGUN_API_KEY || !process.env.MAILGUN_DOMAIN;
+    const responseData: any = {
+      message: emailSent 
+        ? 'User created successfully. Please check your email for the verification code.'
+        : 'User created successfully. Please check your email for the verification code (or see server logs if Mailgun is not configured).',
       user: {
         id: user.id,
         email: user.email,
+        name: trimmedName,
         email_verified: false,
       },
-    });
+    };
+
+    // Include code in response for development (when Mailgun not configured)
+    if (isDevelopment) {
+      responseData.verification_code = user.verification_code;
+      responseData.message = 'User created successfully. Use the verification code below (Mailgun not configured).';
+    }
+
+    return res.status(201).json(responseData);
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -134,6 +180,7 @@ router.post('/signin', async (req: Request<{}, {}, SigninBody>, res: Response) =
       user: {
         id: user.id,
         email: user.email,
+        name: user.name,
         email_verified: user.email_verified,
       },
     });
@@ -144,7 +191,53 @@ router.post('/signin', async (req: Request<{}, {}, SigninBody>, res: Response) =
   }
 });
 
-// Verify email
+// Verify email with code (new endpoint)
+router.post('/verify-email', async (req: Request<{}, {}, { email?: string; code?: string }>, res: Response) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({ error: 'Email and verification code are required' });
+    }
+
+    if (typeof code !== 'string' || code.length !== 6 || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'Invalid verification code format. Must be 6 digits.' });
+    }
+
+    const user = await getUserByEmail(email);
+    if (!user || !user.id) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if code matches and is not expired
+    if (user.verification_code !== code) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    if (!user.verification_code_expires || user.verification_code_expires < Date.now()) {
+      return res.status(400).json({ error: 'Verification code has expired' });
+    }
+
+    // Mark email as verified
+    await markEmailVerified(user.id);
+
+    return res.json({
+      message: 'Email verified successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        email_verified: true,
+      },
+    });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Legacy verify email with token (for backward compatibility)
 router.get('/verify-email', async (req: Request, res: Response) => {
   try {
     const { token } = req.query;
@@ -166,6 +259,7 @@ router.get('/verify-email', async (req: Request, res: Response) => {
       user: {
         id: user.id,
         email: user.email,
+        name: user.name,
         email_verified: true,
       },
     });
@@ -201,12 +295,12 @@ router.post('/resend-verification', async (req: Request<{}, {}, ResendVerificati
       return res.status(500).json({ error: 'Invalid user data' });
     }
 
-    // Generate new verification token
-    const newToken = generateDbToken();
-    await setVerificationToken(user.id, newToken);
+    // Generate new 6-digit verification code
+    const newCode = generateVerificationCode();
+    await setVerificationCode(user.id, newCode, 10); // 10 minutes expiration
 
-    // Send verification email
-    const emailSent = await sendVerificationEmail(email, newToken);
+    // Send verification email with code
+    const emailSent = await sendVerificationEmail(email, newCode);
     if (!emailSent) {
       return res.status(500).json({ error: 'Failed to send verification email' });
     }
@@ -311,12 +405,286 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
       user: {
         id: user.id,
         email: user.email,
+        name: user.name,
         email_verified: user.email_verified,
         created_at: user.created_at,
       },
     });
   } catch (error) {
     console.error('Get user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Update profile (name and/or email)
+router.put('/profile', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { name, email } = req.body as UpdateProfileBody;
+
+    if (!name && !email) {
+      return res.status(400).json({ error: 'At least one field (name or email) is required' });
+    }
+
+    const user = await getUserById(String(req.user.userId));
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const oldName = user.name;
+    let nameChanged = false;
+
+    // Update name if provided
+    if (name !== undefined) {
+      if (name.trim().length < 2) {
+        return res.status(400).json({ error: 'Name must be at least 2 characters' });
+      }
+      const newName = name.trim();
+      if (newName !== oldName) {
+        await updateUserName(String(req.user.userId), newName);
+        nameChanged = true;
+      }
+    }
+
+    // Update email if provided
+    if (email !== undefined) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+
+      // Check if email is already taken by another user
+      const existingUser = await getUserByEmail(email);
+      if (existingUser && existingUser.id !== user.id) {
+        return res.status(400).json({ error: 'Email already in use' });
+      }
+
+      // Don't update email yet - store as pending and send code to current email (step 1)
+      const currentEmailCode = generateVerificationCode();
+      
+      await setPendingEmailChange(
+        String(req.user.userId),
+        email.trim(),
+        currentEmailCode
+      );
+
+      // Send verification code to current email (step 1)
+      await sendVerificationEmail(user.email, currentEmailCode);
+    }
+
+    // Fetch updated user
+    const updatedUser = await getUserById(String(req.user.userId));
+    if (!updatedUser) {
+      return res.status(500).json({ error: 'Failed to fetch updated user' });
+    }
+
+    // Check if there's a pending email change
+    const fullUser = await getUserByIdFull(String(req.user.userId));
+    const hasPendingEmail = fullUser?.pending_email != null;
+
+    // Send alert email if name was changed
+    if (nameChanged) {
+      await sendProfileChangeAlert(updatedUser.email, {
+        nameChanged: true,
+        oldName: oldName,
+        newName: updatedUser.name,
+      });
+    }
+
+    return res.json({
+      message: hasPendingEmail 
+        ? 'Verification code sent to your current email. Please verify to complete email change.'
+        : 'Profile updated successfully',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        email_verified: updatedUser.email_verified,
+        created_at: updatedUser.created_at,
+      },
+      pendingEmail: hasPendingEmail ? fullUser.pending_email : null,
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Change password
+router.put('/change-password', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { currentPassword, newPassword } = req.body as ChangePasswordBody;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    // Get current user info
+    const currentUser = await getUserById(String(req.user.userId));
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get user with password hash for verification
+    const user = await getUserByEmail(currentUser.email);
+    if (!user || !user.id) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Verify current password
+    const isValid = await verifyPassword(currentPassword, user.password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    // Update password
+    const passwordHash = await hashPassword(newPassword);
+    await updatePassword(user.id, passwordHash);
+
+    // Send alert email about password change
+    await sendProfileChangeAlert(currentUser.email, {
+      passwordChanged: true,
+    });
+
+    return res.json({
+      message: 'Password changed successfully',
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Verify current email for email change (step 1)
+router.post('/verify-current-email-change', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { currentEmailCode } = req.body as { currentEmailCode?: string };
+
+    if (!currentEmailCode) {
+      return res.status(400).json({ error: 'Verification code is required' });
+    }
+
+    const isValid = await verifyCurrentEmailForChange(
+      String(req.user.userId),
+      currentEmailCode
+    );
+
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid or expired verification code' });
+    }
+
+    // Get pending email
+    const fullUser = await getUserByIdFull(String(req.user.userId));
+    if (!fullUser || !fullUser.pending_email) {
+      return res.status(400).json({ error: 'No pending email change found' });
+    }
+
+    // Generate and send verification code to new email (step 2)
+    const newEmailCode = generateVerificationCode();
+    await setNewEmailCode(String(req.user.userId), newEmailCode);
+    await sendVerificationEmail(fullUser.pending_email, newEmailCode);
+
+    return res.json({
+      message: 'Current email verified. Verification code sent to new email.',
+      pendingEmail: fullUser.pending_email,
+    });
+  } catch (error) {
+    console.error('Verify current email change error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Verify new email for email change (step 2)
+router.post('/verify-new-email-change', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { newEmailCode } = req.body as { newEmailCode?: string };
+
+    if (!newEmailCode) {
+      return res.status(400).json({ error: 'Verification code is required' });
+    }
+
+    // Get old email before verification
+    const fullUserBefore = await getUserByIdFull(String(req.user.userId));
+    const oldEmail = fullUserBefore?.email;
+
+    const isValid = await verifyNewEmailForChange(
+      String(req.user.userId),
+      newEmailCode
+    );
+
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid or expired verification code' });
+    }
+
+    // Fetch updated user
+    const updatedUser = await getUserById(String(req.user.userId));
+    if (!updatedUser) {
+      return res.status(500).json({ error: 'Failed to fetch updated user' });
+    }
+
+    // Send alert email about email change
+    if (oldEmail && oldEmail !== updatedUser.email) {
+      await sendProfileChangeAlert(updatedUser.email, {
+        emailChanged: true,
+        oldEmail: oldEmail,
+        newEmail: updatedUser.email,
+      });
+    }
+
+    return res.json({
+      message: 'Email changed successfully.',
+      user: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        email_verified: updatedUser.email_verified,
+        created_at: updatedUser.created_at,
+      },
+    });
+  } catch (error) {
+    console.error('Verify new email change error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+    return;
+  }
+});
+
+// Cancel pending email change
+router.post('/cancel-email-change', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await clearPendingEmailChange(String(req.user.userId));
+
+    return res.json({
+      message: 'Email change cancelled',
+    });
+  } catch (error) {
+    console.error('Cancel email change error:', error);
     res.status(500).json({ error: 'Internal server error' });
     return;
   }
