@@ -586,16 +586,22 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
       maximumSize: const Size(dockButtonSize, dockButtonSize),
       padding: EdgeInsets.zero,
       iconSize: 22,
+      foregroundColor: Theme.of(context).colorScheme.onSurface,
+      side: BorderSide(
+        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+      ),
     );
 
     final dockDecoration = BoxDecoration(
-      // More transparent so underlying text is clearly visible through the bar.
-      color: Colors.white.withValues(alpha: 0.42),
+      // Dark theme background with transparency
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      border: Border.all(
+        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+      ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.10),
+          color: Colors.black.withValues(alpha: 0.3),
           blurRadius: 14,
           offset: const Offset(0, 6),
         ),
@@ -733,8 +739,11 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                   maximumSize: const Size(dockButtonSize, dockButtonSize),
                                   padding: EdgeInsets.zero,
                                   iconSize: 22,
-                                  foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red, width: 2),
+                                  foregroundColor: Theme.of(context).colorScheme.error,
+                                  side: BorderSide(
+                                    color: Theme.of(context).colorScheme.error,
+                                    width: 2,
+                                  ),
                                 ),
                               )
                             else
@@ -747,8 +756,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                   maximumSize: const Size(dockButtonSize, dockButtonSize),
                                   padding: EdgeInsets.zero,
                                   iconSize: 22,
-                                  backgroundColor: Colors.blue,
-                                  foregroundColor: Colors.white,
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                                 ),
                               ),
                             IconButton.outlined(
@@ -819,15 +828,21 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
       maximumSize: const Size(dockButtonSize, dockButtonSize),
       padding: EdgeInsets.zero,
       iconSize: 22,
+      foregroundColor: Theme.of(context).colorScheme.onSurface,
+      side: BorderSide(
+        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+      ),
     );
     final dockDecoration = BoxDecoration(
-      // More transparent so underlying text is clearly visible through the bar.
-      color: Colors.white.withValues(alpha: 0.42),
+      // Dark theme background with transparency
+      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+      border: Border.all(
+        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+      ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.10),
+          color: Colors.black.withValues(alpha: 0.3),
           blurRadius: 14,
           offset: const Offset(0, 6),
         ),
@@ -1095,8 +1110,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                   maximumSize: const Size(dockButtonSize, dockButtonSize),
                   padding: EdgeInsets.zero,
                   iconSize: 22,
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
               ),
             ],
