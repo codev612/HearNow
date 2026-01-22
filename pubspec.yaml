@@ -51,6 +51,9 @@ dependencies:
   # File system utilities
   path_provider: ^2.1.4
   path: ^1.9.0
+  
+  # Window management for transparency and always-on-top
+  window_manager: ^0.3.8
 
 dev_dependencies:
   flutter_test:

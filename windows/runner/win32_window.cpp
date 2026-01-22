@@ -16,6 +16,16 @@ namespace {
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+/// Window attribute for backdrop blur effect (Windows 11).
+/// DWMWA_SYSTEMBACKDROP_TYPE = 38
+/// DWMSBT_MAINWINDOW = 2 (acrylic blur)
+#ifndef DWMWA_SYSTEMBACKDROP_TYPE
+#define DWMWA_SYSTEMBACKDROP_TYPE 38
+#endif
+#ifndef DWMSBT_MAINWINDOW
+#define DWMSBT_MAINWINDOW 2
+#endif
+
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 /// Registry key for app theme preference.
@@ -273,16 +283,26 @@ void Win32Window::OnDestroy() {
 }
 
 void Win32Window::UpdateTheme(HWND const window) {
-  DWORD light_mode;
-  DWORD light_mode_size = sizeof(light_mode);
-  LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
-                               kGetPreferredBrightnessRegValue,
-                               RRF_RT_REG_DWORD, nullptr, &light_mode,
-                               &light_mode_size);
-
-  if (result == ERROR_SUCCESS) {
-    BOOL enable_dark_mode = light_mode == 0;
-    DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                          &enable_dark_mode, sizeof(enable_dark_mode));
-  }
+  // Force dark mode for title bar regardless of Windows settings
+  BOOL enable_dark_mode = TRUE;
+  DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &enable_dark_mode, sizeof(enable_dark_mode));
+  
+  // Enable backdrop blur effect (acrylic blur) for Windows 11
+  DWORD backdrop_type = DWMSBT_MAINWINDOW;
+  DwmSetWindowAttribute(window, DWMWA_SYSTEMBACKDROP_TYPE,
+                        &backdrop_type, sizeof(backdrop_type));
+  
+  // Original code (commented out - was reading from registry):
+  // DWORD light_mode;
+  // DWORD light_mode_size = sizeof(light_mode);
+  // LSTATUS result = RegGetValue(HKEY_CURRENT_USER, kGetPreferredBrightnessRegKey,
+  //                              kGetPreferredBrightnessRegValue,
+  //                              RRF_RT_REG_DWORD, nullptr, &light_mode,
+  //                              &light_mode_size);
+  // if (result == ERROR_SUCCESS) {
+  //   BOOL enable_dark_mode = light_mode == 0;
+  //   DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
+  //                         &enable_dark_mode, sizeof(enable_dark_mode));
+  // }
 }

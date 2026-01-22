@@ -347,8 +347,11 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
 
   Widget _buildBubble({required TranscriptSource source, required String text}) {
     final isMe = source == TranscriptSource.mic;
-    final backgroundColor = isMe ? Colors.blue.shade600 : Colors.grey.shade300;
-    final textColor = isMe ? Colors.white : Colors.black87;
+    // Make bubbles more transparent - use black background with low opacity for better readability
+    final backgroundColor = isMe 
+        ? Colors.blue.shade600.withValues(alpha: 0.3) 
+        : Colors.grey.shade800.withValues(alpha: 0.3);
+    final textColor = isMe ? Colors.white : Colors.white;
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -360,6 +363,19 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
           decoration: BoxDecoration(
             color: backgroundColor,
             borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isMe 
+                  ? Colors.blue.shade400.withValues(alpha: 0.5) 
+                  : Colors.grey.shade400.withValues(alpha: 0.5),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Text(
             text,
@@ -367,6 +383,28 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
               fontSize: 16,
               color: textColor,
               fontStyle: FontStyle.normal,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.9),
+                  blurRadius: 5,
+                  offset: const Offset(1, 1),
+                ),
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.9),
+                  blurRadius: 5,
+                  offset: const Offset(-1, -1),
+                ),
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.9),
+                  blurRadius: 5,
+                  offset: const Offset(1, -1),
+                ),
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.9),
+                  blurRadius: 5,
+                  offset: const Offset(-1, 1),
+                ),
+              ],
             ),
           ),
         ),
@@ -508,12 +546,16 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     final hasAny = bubbles.isNotEmpty;
 
     if (!hasAny) {
-      return const Center(
+      return Center(
         child: Text(
           'Tap the microphone button to start recording',
           style: TextStyle(
-            color: Colors.grey,
+            color: Colors.white,
             fontSize: 16,
+            shadows: [
+              Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+              Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+            ],
           ),
         ),
       );
@@ -587,7 +629,14 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 onChanged: (value) => setState(() => _useMic = value ?? true),
                 visualDensity: VisualDensity.compact,
               ),
-              const Text('Use mic', style: TextStyle(fontSize: 13)),
+              Text('Use mic', style: TextStyle(
+                fontSize: 13,
+                color: Colors.white,
+                shadows: [
+                  Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                  Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                ],
+              )),
               const SizedBox(width: 16),
               // Auto Ask checkbox
               Checkbox(
@@ -595,7 +644,14 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 onChanged: (value) => setState(() => _autoAsk = value ?? false),
                 visualDensity: VisualDensity.compact,
               ),
-              const Text('Auto Ask', style: TextStyle(fontSize: 13)),
+              Text('Auto Ask', style: TextStyle(
+                fontSize: 13,
+                color: Colors.white,
+                shadows: [
+                  Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                  Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                ],
+              )),
               const Spacer(),
               // Recording status
               if (isRec) ...[
@@ -605,14 +661,34 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                   decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 8),
-                const Text('REC', style: TextStyle(fontWeight: FontWeight.w700)),
+                Text('REC', style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  shadows: [
+                    Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                    Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                  ],
+                )),
                 const SizedBox(width: 8),
                 Text(
                   elapsed == null ? '' : _formatDuration(elapsed),
-                  style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+                  style: TextStyle(
+                    fontFeatures: [FontFeature.tabularFigures()],
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                      Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                    ],
+                  ),
                 ),
               ] else
-                const Text('Ready', style: TextStyle(color: Colors.black54)),
+                Text('Ready', style: TextStyle(
+                  color: Colors.white70,
+                  shadows: [
+                    Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                    Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                  ],
+                )),
             ],
           ),
         ),
@@ -625,9 +701,9 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: Colors.black.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
                 ),
                 child: _buildTranscript(speechProvider),
               ),
@@ -771,11 +847,23 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                   child: TextField(
                     controller: _askAiController,
                     enabled: !speechProvider.isAiLoading,
-                    decoration: const InputDecoration(
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
                       hintText: 'Ask AI… (Ctrl+Enter)',
-                      border: OutlineInputBorder(),
+                      hintStyle: TextStyle(color: Colors.white70),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.2),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.8)),
+                      ),
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     ),
                     textInputAction: TextInputAction.send,
                     onSubmitted: (value) => speechProvider.askAi(question: value),
@@ -818,9 +906,9 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: Colors.black.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
                   ),
                   child: TextField(
                     controller: _aiResponseController,
@@ -828,6 +916,21 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                     minLines: null,
                     maxLines: null,
                     expands: true,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          blurRadius: 4,
+                          offset: Offset(1, 1),
+                        ),
+                        Shadow(
+                          color: Colors.black,
+                          blurRadius: 6,
+                          offset: Offset(-1, -1),
+                        ),
+                      ],
+                    ),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       isCollapsed: true,
@@ -949,11 +1052,23 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                 child: TextField(
                   controller: _askAiController,
                   enabled: !speechProvider.isAiLoading,
-                  decoration: const InputDecoration(
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
                     hintText: 'Ask AI… (Ctrl+Enter)',
-                    border: OutlineInputBorder(),
+                    hintStyle: TextStyle(color: Colors.white70),
+                    filled: true,
+                    fillColor: Colors.white.withValues(alpha: 0.2),
+                    border: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.8)),
+                    ),
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                   ),
                   textInputAction: TextInputAction.send,
                   onSubmitted: (value) => speechProvider.askAi(question: value),
@@ -995,9 +1110,9 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
+                  color: Colors.black.withValues(alpha: 0.4),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
                 ),
                 child: TextField(
                   controller: _aiResponseController,
@@ -1005,6 +1120,21 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                   minLines: null,
                   maxLines: null,
                   expands: true,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black,
+                        blurRadius: 4,
+                        offset: Offset(1, 1),
+                      ),
+                      Shadow(
+                        color: Colors.black,
+                        blurRadius: 6,
+                        offset: Offset(-1, -1),
+                      ),
+                    ],
+                  ),
                   decoration: const InputDecoration(
                     border: InputBorder.none,
                     isCollapsed: true,
@@ -1193,9 +1323,14 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                             padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
                             child: Text(
                               session?.title ?? 'Untitled Session',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                                  Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                                ],
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -1229,9 +1364,10 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                           icon: const Icon(Icons.file_download),
                           tooltip: 'Export (Ctrl+E)',
                           onPressed: session == null ? null : _exportSession,
+                          color: Colors.white,
                         ),
                         PopupMenuButton(
-                          icon: const Icon(Icons.more_vert),
+                          icon: const Icon(Icons.more_vert, color: Colors.white),
                           itemBuilder: (context) => [
                             const PopupMenuItem(
                               value: 'sessions',
