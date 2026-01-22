@@ -1,4 +1,4 @@
-class InterviewQuestionService {
+class MeetingQuestionService {
   static const List<String> _generalQuestions = [
     'Tell me about yourself.',
     'What interests you about this role?',

@@ -5,9 +5,17 @@
 #include <flutter/encodable_value.h>
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
+#include <winuser.h>
 
 #include "flutter/generated_plugin_registrant.h"
 #include "audio_capture.h"
+
+#ifndef WDA_EXCLUDEFROMCAPTURE
+#define WDA_EXCLUDEFROMCAPTURE 0x00000011
+#endif
+#ifndef WDA_NONE
+#define WDA_NONE 0x00000000
+#endif
 
 // Global audio capture instance
 std::unique_ptr<AudioCapture> g_audio_capture;
@@ -36,12 +44,12 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   // Setup method channel for audio
-  auto channel =
+  auto audioChannel =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(), "com.hearnow/audio",
           &flutter::StandardMethodCodec::GetInstance());
 
-  channel->SetMethodCallHandler(
+  audioChannel->SetMethodCallHandler(
       [](const flutter::MethodCall<flutter::EncodableValue>& call,
          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
              result) {
@@ -81,6 +89,39 @@ bool FlutterWindow::OnCreate() {
             result->Success(flutter::EncodableValue(frame));
           } else {
             result->Success(flutter::EncodableValue(std::vector<uint8_t>()));
+          }
+        } else {
+          result->NotImplemented();
+        }
+      });
+
+  // Setup method channel for window settings
+  auto windowChannel =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), "com.hearnow/window",
+          &flutter::StandardMethodCodec::GetInstance());
+
+  windowChannel->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name().compare("setUndetectable") == 0) {
+          bool value = false;
+          if (call.arguments()) {
+            if (std::holds_alternative<bool>(*call.arguments())) {
+              value = std::get<bool>(*call.arguments());
+            }
+          }
+          HWND hwnd = GetHandle();
+          if (hwnd) {
+            if (value) {
+              SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+            } else {
+              SetWindowDisplayAffinity(hwnd, WDA_NONE);
+            }
+            result->Success(flutter::EncodableValue(true));
+          } else {
+            result->Error("NO_WINDOW", "Window handle not available");
           }
         } else {
           result->NotImplemented();

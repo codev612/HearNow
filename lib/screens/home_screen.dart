@@ -4,14 +4,14 @@ import '../config/app_config.dart';
 import '../providers/speech_to_text_provider.dart';
 import '../models/transcript_bubble.dart';
 
-class InterviewPage extends StatefulWidget {
-  const InterviewPage({super.key});
+class MeetingPage extends StatefulWidget {
+  const MeetingPage({super.key});
 
   @override
-  State<InterviewPage> createState() => _InterviewPageState();
+  State<MeetingPage> createState() => _MeetingPageState();
 }
 
-class _InterviewPageState extends State<InterviewPage> {
+class _MeetingPageState extends State<MeetingPage> {
   final ScrollController _transcriptScrollController = ScrollController();
   final TextEditingController _askAiController = TextEditingController();
   final TextEditingController _aiResponseController = TextEditingController();

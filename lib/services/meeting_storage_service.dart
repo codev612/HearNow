@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-import '../models/interview_session.dart';
+import '../models/meeting_session.dart';
 
-class InterviewStorageService {
-  static const String _sessionsDir = 'interview_sessions';
+class MeetingStorageService {
+  static const String _sessionsDir = 'meeting_sessions';
 
   Future<String> _getSessionsDirectory() async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -21,7 +21,7 @@ class InterviewStorageService {
     return path.join(dir, '$sessionId.json');
   }
 
-  Future<void> saveSession(InterviewSession session) async {
+  Future<void> saveSession(MeetingSession session) async {
     try {
       final filePath = await _getSessionFilePath(session.id);
       final file = File(filePath);
@@ -32,7 +32,7 @@ class InterviewStorageService {
     }
   }
 
-  Future<InterviewSession?> loadSession(String sessionId) async {
+  Future<MeetingSession?> loadSession(String sessionId) async {
     try {
       final filePath = await _getSessionFilePath(sessionId);
       final file = File(filePath);
@@ -41,13 +41,13 @@ class InterviewStorageService {
       }
       final json = await file.readAsString();
       final data = jsonDecode(json) as Map<String, dynamic>;
-      return InterviewSession.fromJson(data);
+      return MeetingSession.fromJson(data);
     } catch (e) {
       throw Exception('Failed to load session: $e');
     }
   }
 
-  Future<List<InterviewSession>> listSessions() async {
+  Future<List<MeetingSession>> listSessions() async {
     try {
       final dir = Directory(await _getSessionsDirectory());
       if (!await dir.exists()) {
@@ -59,12 +59,12 @@ class InterviewStorageService {
           .where((f) => f.path.endsWith('.json'))
           .toList();
 
-      final sessions = <InterviewSession>[];
+      final sessions = <MeetingSession>[];
       for (final file in files) {
         try {
           final json = await file.readAsString();
           final data = jsonDecode(json) as Map<String, dynamic>;
-          sessions.add(InterviewSession.fromJson(data));
+          sessions.add(MeetingSession.fromJson(data));
         } catch (e) {
           print('Error loading session from ${file.path}: $e');
         }
@@ -95,9 +95,9 @@ class InterviewStorageService {
     }
   }
 
-  Future<String> exportSessionAsText(InterviewSession session) async {
+  Future<String> exportSessionAsText(MeetingSession session) async {
     final buffer = StringBuffer();
-    buffer.writeln('Interview Session: ${session.title}');
+    buffer.writeln('Meeting Session: ${session.title}');
     buffer.writeln('Created: ${session.createdAt.toLocal()}');
     if (session.updatedAt != null) {
       buffer.writeln('Updated: ${session.updatedAt!.toLocal()}');

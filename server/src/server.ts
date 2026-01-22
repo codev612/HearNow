@@ -131,31 +131,31 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
 
     switch (requestMode) {
       case 'summary':
-        systemPrompt = 'You are HearNow, an interview assistant. Summarize the interview conversation so far into concise bullet points. Include key topics discussed, candidate responses, and any notable points. If action items or follow-ups exist, list them separately.';
+        systemPrompt = 'You are HearNow, a meeting assistant. Summarize the meeting conversation so far into concise bullet points. Include key topics discussed, participant responses, and any notable points. If action items or follow-ups exist, list them separately.';
         if (historyText.length > 0) {
-          userPrompt = `Interview transcript:\n${historyText}\n\nProvide a concise summary of this interview.`;
+          userPrompt = `Meeting transcript:\n${historyText}\n\nProvide a concise summary of this meeting.`;
         } else {
-          userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+          userPrompt = 'No transcript available yet. Please wait for the meeting to begin.';
         }
         break;
       case 'insights':
-        systemPrompt = 'You are HearNow, an interview assistant. Analyze the interview transcript and provide key insights about the candidate. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
+        systemPrompt = 'You are HearNow, a meeting assistant. Analyze the meeting transcript and provide key insights about the participants and discussion. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
         if (historyText.length > 0) {
-          userPrompt = `Interview transcript:\n${historyText}\n\nProvide key insights about this interview and candidate.`;
+          userPrompt = `Meeting transcript:\n${historyText}\n\nProvide key insights about this meeting and participants.`;
         } else {
-          userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+          userPrompt = 'No transcript available yet. Please wait for the meeting to begin.';
         }
         break;
       case 'questions':
-        systemPrompt = 'You are HearNow, an interview assistant. Based on the interview transcript so far, suggest 3-5 relevant follow-up questions the interviewer should ask. Consider what has been discussed, what gaps exist, and what would help make a better hiring decision. Format as a numbered list.';
+        systemPrompt = 'You are HearNow, a meeting assistant. Based on the meeting transcript so far, suggest 3-5 relevant follow-up questions or discussion points. Consider what has been discussed, what gaps exist, and what would help move the conversation forward. Format as a numbered list.';
         if (historyText.length > 0) {
-          userPrompt = `Interview transcript:\n${historyText}\n\nSuggest relevant follow-up questions for this interview.`;
+          userPrompt = `Meeting transcript:\n${historyText}\n\nSuggest relevant follow-up questions or discussion points for this meeting.`;
         } else {
-          userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+          userPrompt = 'No transcript available yet. Please wait for the meeting to begin.';
         }
         break;
       default: // 'reply'
-        systemPrompt = 'You are HearNow, an interview assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
+        systemPrompt = 'You are HearNow, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
         if (historyText.length > 0) {
           userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
         } else if (questionText.length > 0) {
@@ -520,34 +520,34 @@ aiWss.on('connection', (ws: WebSocket) => {
       switch (requestMode) {
         case 'summary':
           systemPrompt =
-            'You are HearNow, an interview assistant. Summarize the interview conversation so far into concise bullet points. Include key topics discussed, candidate responses, and any notable points. If action items or follow-ups exist, list them separately.';
+            'You are HearNow, a meeting assistant. Summarize the meeting conversation so far into concise bullet points. Include key topics discussed, participant responses, and any notable points. If action items or follow-ups exist, list them separately.';
           if (historyText.length > 0) {
-            userPrompt = `Interview transcript:\n${historyText}\n\nProvide a concise summary of this interview.`;
+            userPrompt = `Meeting transcript:\n${historyText}\n\nProvide a concise summary of this meeting.`;
           } else {
-            userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+            userPrompt = 'No transcript available yet. Please wait for the meeting to begin.';
           }
           break;
         case 'insights':
           systemPrompt =
-            'You are HearNow, an interview assistant. Analyze the interview transcript and provide key insights about the candidate. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
+            'You are HearNow, a meeting assistant. Analyze the meeting transcript and provide key insights about the participants and discussion. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
           if (historyText.length > 0) {
-            userPrompt = `Interview transcript:\n${historyText}\n\nProvide key insights about this interview and candidate.`;
+            userPrompt = `Meeting transcript:\n${historyText}\n\nProvide key insights about this meeting and participants.`;
           } else {
-            userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+            userPrompt = 'No transcript available yet. Please wait for the meeting to begin.';
           }
           break;
         case 'questions':
           systemPrompt =
-            'You are HearNow, an interview assistant. Based on the interview transcript so far, suggest 3-5 relevant follow-up questions the interviewer should ask. Consider what has been discussed, what gaps exist, and what would help make a better hiring decision. Format as a numbered list.';
+            'You are HearNow, a meeting assistant. Based on the meeting transcript so far, suggest 3-5 relevant follow-up questions or discussion points. Consider what has been discussed, what gaps exist, and what would help move the conversation forward. Format as a numbered list.';
           if (historyText.length > 0) {
-            userPrompt = `Interview transcript:\n${historyText}\n\nSuggest relevant follow-up questions for this interview.`;
+            userPrompt = `Meeting transcript:\n${historyText}\n\nSuggest relevant follow-up questions or discussion points for this meeting.`;
           } else {
-            userPrompt = 'No transcript available yet. Please wait for the interview to begin.';
+            userPrompt = 'No transcript available yet. Please wait for the meeting to begin.';
           }
           break;
         default:
           systemPrompt =
-            'You are HearNow, an interview assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
+            'You are HearNow, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
           if (historyText.length > 0) {
             userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
           } else if (questionText.length > 0) {

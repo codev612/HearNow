@@ -4,22 +4,22 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import '../config/app_config.dart';
 import '../providers/speech_to_text_provider.dart';
-import '../providers/interview_provider.dart';
+import '../providers/meeting_provider.dart';
 import '../providers/auth_provider.dart';
-import '../models/interview_session.dart';
+import '../models/meeting_session.dart';
 import '../models/transcript_bubble.dart';
-import '../services/interview_question_service.dart';
+import '../services/meeting_question_service.dart';
 import '../services/ai_service.dart';
 import '../providers/shortcuts_provider.dart';
 
-class InterviewPageEnhanced extends StatefulWidget {
-  const InterviewPageEnhanced({super.key});
+class MeetingPageEnhanced extends StatefulWidget {
+  const MeetingPageEnhanced({super.key});
 
   @override
-  State<InterviewPageEnhanced> createState() => _InterviewPageEnhancedState();
+  State<MeetingPageEnhanced> createState() => _MeetingPageEnhancedState();
 }
 
-class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
+class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   final ScrollController _transcriptScrollController = ScrollController();
   final TextEditingController _askAiController = TextEditingController();
   final TextEditingController _aiResponseController = TextEditingController();
@@ -30,7 +30,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   bool _showSummary = false;
   bool _showInsights = false;
   SpeechToTextProvider? _speechProvider;
-  InterviewProvider? _interviewProvider;
+  MeetingProvider? _meetingProvider;
   Timer? _recordingTimer;
   DateTime? _recordingStartedAt;
   bool _showMarkers = true;
@@ -47,7 +47,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = context.read<AuthProvider>();
       _speechProvider = context.read<SpeechToTextProvider>();
-      _interviewProvider = context.read<InterviewProvider>();
+      _meetingProvider = context.read<MeetingProvider>();
       
       final authToken = authProvider.token;
       _speechProvider!.initialize(
@@ -57,21 +57,21 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
       );
       
       // Update AI service with auth token
-      _interviewProvider!.updateAuthToken(authToken);
+      _meetingProvider!.updateAuthToken(authToken);
 
       // Create new session if none exists
-      if (_interviewProvider!.currentSession == null) {
-        _interviewProvider!.createNewSession();
+      if (_meetingProvider!.currentSession == null) {
+        _meetingProvider!.createNewSession();
       }
 
-      // Sync bubbles to interview session
+      // Sync bubbles to meeting session
       _speechProvider!.addListener(_syncBubblesToSession);
     });
   }
 
   void _syncBubblesToSession() {
-    if (_interviewProvider?.currentSession != null && _speechProvider != null) {
-      _interviewProvider!.updateCurrentSessionBubbles(_speechProvider!.bubbles);
+    if (_meetingProvider?.currentSession != null && _speechProvider != null) {
+      _meetingProvider!.updateCurrentSessionBubbles(_speechProvider!.bubbles);
     }
   }
 
@@ -151,7 +151,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   }
 
   Future<void> _markMoment() async {
-    final interviewProvider = context.read<InterviewProvider>();
+    final meetingProvider = context.read<MeetingProvider>();
     final now = DateTime.now();
     final elapsed = _recordingStartedAt == null ? null : now.difference(_recordingStartedAt!);
 
@@ -208,7 +208,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     if (!mounted) return;
     if (note == null) return;
 
-    interviewProvider.addMarker({
+    meetingProvider.addMarker({
       'id': now.millisecondsSinceEpoch.toString(),
       'at': elapsed == null ? _formatWallTime(now) : _formatDuration(elapsed),
       'wallTime': now.toIso8601String(),
@@ -268,22 +268,22 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     );
   }
 
-  Future<void> _showMarkersDialog(InterviewProvider interviewProvider) async {
+  Future<void> _showMarkersDialog(MeetingProvider meetingProvider) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Markers (${interviewProvider.markers.length})'),
+        title: Text('Markers (${meetingProvider.markers.length})'),
         content: SizedBox(
           width: 720,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 420),
             child: ListView.separated(
               shrinkWrap: true,
-              itemCount: interviewProvider.markers.length,
+              itemCount: meetingProvider.markers.length,
               separatorBuilder: (_, __) => const Divider(height: 12),
               itemBuilder: (context, index) {
-                final m = interviewProvider.markers[index];
+                final m = meetingProvider.markers[index];
                 final at = (m['at']?.toString() ?? '').trim();
                 final label = (m['label']?.toString() ?? '').trim();
                 final text = (m['text']?.toString() ?? '').trim();
@@ -429,7 +429,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
           width: double.maxFinite,
           child: ListView(
             shrinkWrap: true,
-            children: InterviewQuestionService.getQuestionsByCategoryMap().entries.map((entry) {
+            children: MeetingQuestionService.getQuestionsByCategoryMap().entries.map((entry) {
               return ListTile(
                 title: Text(entry.key),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -442,7 +442,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     );
 
     if (category != null && mounted) {
-      final questions = InterviewQuestionService.getQuestionsByCategory(category);
+      final questions = MeetingQuestionService.getQuestionsByCategory(category);
       final selected = await showDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
@@ -470,8 +470,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   }
 
   Future<void> _generateSuggestedQuestions() async {
-    final interviewProvider = context.read<InterviewProvider>();
-    final questions = await interviewProvider.generateQuestions();
+    final meetingProvider = context.read<MeetingProvider>();
+    final questions = await meetingProvider.generateQuestions();
     if (questions.isNotEmpty && mounted) {
       setState(() {
         _suggestedQuestions = questions;
@@ -481,8 +481,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   }
 
   Future<void> _saveSession() async {
-    final interviewProvider = context.read<InterviewProvider>();
-    final currentSession = interviewProvider.currentSession;
+    final meetingProvider = context.read<MeetingProvider>();
+    final currentSession = meetingProvider.currentSession;
     final currentTitle = currentSession?.title ?? '';
     
     final titleController = TextEditingController(text: currentTitle);
@@ -516,7 +516,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
     
     if (title == null) return; // User cancelled
     
-    await interviewProvider.saveCurrentSession(
+    await meetingProvider.saveCurrentSession(
       title: title.isNotEmpty ? title : null,
     );
     if (mounted) {
@@ -527,12 +527,12 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
   }
 
   Future<void> _exportSession() async {
-    final interviewProvider = context.read<InterviewProvider>();
-    if (interviewProvider.currentSession == null) return;
+    final meetingProvider = context.read<MeetingProvider>();
+    if (meetingProvider.currentSession == null) return;
 
     try {
-      final text = await interviewProvider.exportSessionAsText(
-        interviewProvider.currentSession!.id,
+      final text = await meetingProvider.exportSessionAsText(
+        meetingProvider.currentSession!.id,
       );
       await Clipboard.setData(ClipboardData(text: text));
       if (mounted) {
@@ -583,7 +583,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
 
   Widget _buildConversationPanel(
     SpeechToTextProvider speechProvider,
-    InterviewProvider interviewProvider,
+    MeetingProvider meetingProvider,
   ) {
     _ensureRecordingClock(speechProvider);
     final isRec = speechProvider.isRecording;
@@ -781,7 +781,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                               style: dockButtonStyle,
                             ),
                             IconButton.outlined(
-                              onPressed: interviewProvider.isLoading ? null : _saveSession,
+                              onPressed: meetingProvider.isLoading ? null : _saveSession,
                               tooltip: 'Save session (Ctrl+S)',
                               icon: const Icon(Icons.save),
                               style: dockButtonStyle,
@@ -826,8 +826,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
 
   Widget _buildAiPanel({
     required SpeechToTextProvider speechProvider,
-    required InterviewProvider interviewProvider,
-    required InterviewSession? session,
+    required MeetingProvider meetingProvider,
+    required MeetingSession? session,
     required bool twoColumn,
   }) {
     const dockButtonSize = 48.0;
@@ -991,48 +991,48 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                             children: [
                               IconButton.outlined(
                                 tooltip: 'Summary',
-                                onPressed: interviewProvider.isGeneratingSummary
+                                onPressed: meetingProvider.isGeneratingSummary
                                     ? null
                                     : () async {
-                                        await interviewProvider.generateSummary();
-                                        final s = interviewProvider.currentSession?.summary ?? '';
+                                        await meetingProvider.generateSummary();
+                                        final s = meetingProvider.currentSession?.summary ?? '';
                                         await _showTextDialog(title: 'Summary', text: s);
                                       },
-                                icon: interviewProvider.isGeneratingSummary
+                                icon: meetingProvider.isGeneratingSummary
                                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                     : const Icon(Icons.summarize),
                                 style: dockButtonStyle,
                               ),
                               IconButton.outlined(
                                 tooltip: 'Insights',
-                                onPressed: interviewProvider.isGeneratingInsights
+                                onPressed: meetingProvider.isGeneratingInsights
                                     ? null
                                     : () async {
-                                        await interviewProvider.generateInsights();
-                                        final s = interviewProvider.currentSession?.insights ?? '';
+                                        await meetingProvider.generateInsights();
+                                        final s = meetingProvider.currentSession?.insights ?? '';
                                         await _showTextDialog(title: 'Insights', text: s);
                                       },
-                                icon: interviewProvider.isGeneratingInsights
+                                icon: meetingProvider.isGeneratingInsights
                                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                     : const Icon(Icons.insights),
                                 style: dockButtonStyle,
                               ),
                               IconButton.outlined(
                                 tooltip: 'Questions',
-                                onPressed: interviewProvider.isGeneratingQuestions
+                                onPressed: meetingProvider.isGeneratingQuestions
                                     ? null
                                     : () async {
                                         await _generateSuggestedQuestions();
                                         await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
                                       },
-                                icon: interviewProvider.isGeneratingQuestions
+                                icon: meetingProvider.isGeneratingQuestions
                                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                     : const Icon(Icons.help_outline),
                                 style: dockButtonStyle,
                               ),
                               IconButton.outlined(
                                 tooltip: 'Markers',
-                                onPressed: interviewProvider.markers.isEmpty ? null : () => _showMarkersDialog(interviewProvider),
+                                onPressed: meetingProvider.markers.isEmpty ? null : () => _showMarkersDialog(meetingProvider),
                                 icon: const Icon(Icons.bookmarks_outlined),
                                 style: dockButtonStyle,
                               ),
@@ -1207,48 +1207,48 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                           children: [
                             IconButton.outlined(
                               tooltip: 'Summary',
-                            onPressed: interviewProvider.isGeneratingSummary
+                            onPressed: meetingProvider.isGeneratingSummary
                                 ? null
                                 : () async {
-                                    await interviewProvider.generateSummary();
-                                    final s = interviewProvider.currentSession?.summary ?? '';
+                                    await meetingProvider.generateSummary();
+                                    final s = meetingProvider.currentSession?.summary ?? '';
                                     await _showTextDialog(title: 'Summary', text: s);
                                   },
-                            icon: interviewProvider.isGeneratingSummary
+                            icon: meetingProvider.isGeneratingSummary
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.summarize),
                             style: dockButtonStyle,
                           ),
                           IconButton.outlined(
                             tooltip: 'Insights',
-                            onPressed: interviewProvider.isGeneratingInsights
+                            onPressed: meetingProvider.isGeneratingInsights
                                 ? null
                                 : () async {
-                                    await interviewProvider.generateInsights();
-                                    final s = interviewProvider.currentSession?.insights ?? '';
+                                    await meetingProvider.generateInsights();
+                                    final s = meetingProvider.currentSession?.insights ?? '';
                                     await _showTextDialog(title: 'Insights', text: s);
                                   },
-                            icon: interviewProvider.isGeneratingInsights
+                            icon: meetingProvider.isGeneratingInsights
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.insights),
                             style: dockButtonStyle,
                           ),
                           IconButton.outlined(
                             tooltip: 'Questions',
-                            onPressed: interviewProvider.isGeneratingQuestions
+                            onPressed: meetingProvider.isGeneratingQuestions
                                 ? null
                                 : () async {
                                     await _generateSuggestedQuestions();
                                     await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
                                   },
-                            icon: interviewProvider.isGeneratingQuestions
+                            icon: meetingProvider.isGeneratingQuestions
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.help_outline),
                             style: dockButtonStyle,
                           ),
                           IconButton.outlined(
                             tooltip: 'Markers',
-                            onPressed: interviewProvider.markers.isEmpty ? null : () => _showMarkersDialog(interviewProvider),
+                            onPressed: meetingProvider.markers.isEmpty ? null : () => _showMarkersDialog(meetingProvider),
                             icon: const Icon(Icons.bookmarks_outlined),
                             style: dockButtonStyle,
                           ),
@@ -1292,8 +1292,8 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<SpeechToTextProvider, InterviewProvider>(
-      builder: (context, speechProvider, interviewProvider, child) {
+    return Consumer2<SpeechToTextProvider, MeetingProvider>(
+      builder: (context, speechProvider, meetingProvider, child) {
         _maybeAutoScroll(speechProvider);
 
         final aiText = speechProvider.aiErrorMessage.isNotEmpty
@@ -1306,7 +1306,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
           );
         }
 
-        final session = interviewProvider.currentSession;
+        final session = meetingProvider.currentSession;
         final shortcutsProvider = context.read<ShortcutsProvider>();
 
         // Build shortcuts map from provider
@@ -1345,7 +1345,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
               ),
               _SaveSessionIntent: CallbackAction<_SaveSessionIntent>(
                 onInvoke: (_) {
-                  if (!interviewProvider.isLoading) _saveSession();
+                  if (!meetingProvider.isLoading) _saveSession();
                   return null;
                 },
               ),
@@ -1461,7 +1461,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                       ),
                                     );
                                   } else if (value == 'new') {
-                                    interviewProvider.createNewSession();
+                                    meetingProvider.createNewSession();
                                   }
                                 },
                               ),
@@ -1480,7 +1480,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                         children: [
                           // Error message
                           if (speechProvider.errorMessage.isNotEmpty ||
-                              interviewProvider.errorMessage.isNotEmpty)
+                              meetingProvider.errorMessage.isNotEmpty)
                             Container(
                               padding: const EdgeInsets.all(12),
                               margin: const EdgeInsets.only(bottom: 16),
@@ -1496,7 +1496,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                     child: Text(
                                       speechProvider.errorMessage.isNotEmpty
                                           ? speechProvider.errorMessage
-                                          : interviewProvider.errorMessage,
+                                          : meetingProvider.errorMessage,
                                       style: TextStyle(color: Colors.red.shade900),
                                     ),
                                   ),
@@ -1518,7 +1518,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                     if (_showConversationPanel)
                                       Expanded(
                                         flex: 3,
-                                        child: _buildConversationPanel(speechProvider, interviewProvider),
+                                        child: _buildConversationPanel(speechProvider, meetingProvider),
                                       ),
                                     if (_showConversationPanel && _showAiPanel) const SizedBox(height: 16),
                                     if (_showAiPanel)
@@ -1526,7 +1526,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                         flex: 2,
                                         child: _buildAiPanel(
                                           speechProvider: speechProvider,
-                                          interviewProvider: interviewProvider,
+                                          meetingProvider: meetingProvider,
                                           session: session,
                                           twoColumn: false,
                                         ),
@@ -1545,7 +1545,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   if (_showConversationPanel)
-                                    Expanded(child: _buildConversationPanel(speechProvider, interviewProvider)),
+                                    Expanded(child: _buildConversationPanel(speechProvider, meetingProvider)),
                                   if (_showConversationPanel && _showAiPanel) const SizedBox(width: 16),
                                   if (_showConversationPanel && _showAiPanel)
                                     VerticalDivider(width: 1, thickness: 1, color: Colors.grey.shade300),
@@ -1554,7 +1554,7 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                                     Expanded(
                                       child: _buildAiPanel(
                                         speechProvider: speechProvider,
-                                        interviewProvider: interviewProvider,
+                                        meetingProvider: meetingProvider,
                                         session: session,
                                         twoColumn: true,
                                       ),
@@ -1619,7 +1619,7 @@ class _SessionsListPageState extends State<SessionsListPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<InterviewProvider>().loadSessions();
+      context.read<MeetingProvider>().loadSessions();
     });
   }
 
@@ -1636,9 +1636,9 @@ class _SessionsListPageState extends State<SessionsListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Interview Sessions'),
+        title: const Text('Meeting Sessions'),
       ),
-      body: Consumer<InterviewProvider>(
+      body: Consumer<MeetingProvider>(
         builder: (context, provider, child) {
           if (provider.isLoading && provider.sessions.isEmpty) {
             return const Center(child: CircularProgressIndicator());

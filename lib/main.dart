@@ -3,10 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 import 'providers/speech_to_text_provider.dart';
-import 'providers/interview_provider.dart';
+import 'providers/meeting_provider.dart';
 import 'providers/shortcuts_provider.dart';
 import 'providers/auth_provider.dart';
 import 'services/ai_service.dart';
+import 'services/appearance_service.dart';
 import 'config/app_config.dart';
 import 'screens/app_shell.dart';
 
@@ -28,7 +29,8 @@ void main() async {
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setAlwaysOnTop(true);
-      await windowManager.setSkipTaskbar(true);
+      // Apply appearance settings (will load from SharedPreferences)
+      await AppearanceService.applySettings();
       await windowManager.show();
       await windowManager.focus();
     });
@@ -50,15 +52,15 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => SpeechToTextProvider(),
         ),
-        ChangeNotifierProxyProvider<SpeechToTextProvider, InterviewProvider>(
-          create: (_) => InterviewProvider(
+        ChangeNotifierProxyProvider<SpeechToTextProvider, MeetingProvider>(
+          create: (_) => MeetingProvider(
             aiService: AiService(
               httpBaseUrl: AppConfig.serverHttpBaseUrl,
               aiWsUrl: AppConfig.serverAiWebSocketUrl,
             ),
           ),
           update: (_, speechProvider, previous) => previous ??
-              InterviewProvider(
+              MeetingProvider(
                 aiService: AiService(
                   httpBaseUrl: AppConfig.serverHttpBaseUrl,
                   aiWsUrl: AppConfig.serverAiWebSocketUrl,

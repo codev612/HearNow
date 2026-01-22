@@ -164,9 +164,8 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
   
-  // Exclude window from screen capture (screenshots, screen sharing)
-  // This makes the app undetectable during screen sharing
-  SetWindowDisplayAffinity(window, WDA_EXCLUDEFROMCAPTURE);
+  // Window display affinity (undetectable mode) is now controlled via settings
+  // See AppearanceService and flutter_window.cpp method channel handler
   
   // Register global hotkey Ctrl+H to toggle minimize/show
   // MOD_CONTROL = Ctrl key, 0x48 = H key

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 class HomePage extends StatelessWidget {
-  final VoidCallback onStartInterview;
+  final VoidCallback onStartMeeting;
 
-  const HomePage({super.key, required this.onStartInterview});
+  const HomePage({super.key, required this.onStartMeeting});
 
   @override
   Widget build(BuildContext context) {
@@ -18,14 +18,14 @@ class HomePage extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Interview assistant with separate mic + system transcripts.',
+            'Meeting assistant with separate mic + system transcripts.',
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const Spacer(),
           FilledButton.icon(
-            onPressed: onStartInterview,
+            onPressed: onStartMeeting,
             icon: const Icon(Icons.record_voice_over),
-            label: const Text('Start Interview'),
+            label: const Text('Start Meeting'),
           ),
           const SizedBox(height: 12),
           Text(

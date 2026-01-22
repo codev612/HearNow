@@ -6,7 +6,7 @@ import 'dart:io' show Platform;
 
 import 'home_page.dart';
 import 'settings_page.dart';
-import 'interview_page_enhanced.dart';
+import 'meeting_page_enhanced.dart';
 import 'signin_page.dart';
 import '../providers/shortcuts_provider.dart';
 import '../providers/auth_provider.dart';
@@ -99,11 +99,11 @@ class _AppShellState extends State<AppShell> {
                 Container(
                   color: Theme.of(context).colorScheme.surface,
                   child: HomePage(
-                    onStartInterview: () => setState(() => _index = 1),
+                    onStartMeeting: () => setState(() => _index = 1),
                   ),
                 ),
-                // Interview page remains transparent
-                const InterviewPageEnhanced(),
+                // Meeting page remains transparent
+                const MeetingPageEnhanced(),
                 // Settings page with opaque background
                 Container(
                   color: Theme.of(context).colorScheme.surface,
@@ -130,7 +130,7 @@ class _AppShellState extends State<AppShell> {
           BottomNavigationBarItem(
             icon: Icon(Icons.record_voice_over_outlined),
             activeIcon: Icon(Icons.record_voice_over),
-            label: 'Interview',
+            label: 'Meeting',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),

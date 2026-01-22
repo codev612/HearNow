@@ -7,6 +7,7 @@ import '../config/app_config.dart';
 import '../providers/shortcuts_provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/shortcuts_service.dart';
+import '../services/appearance_service.dart';
 import 'email_change_verification_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -69,6 +70,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 isSelected: _selectedIndex == 2,
                 onTap: () => setState(() => _selectedIndex = 2),
               ),
+              if (Platform.isWindows)
+                _SidebarItem(
+                  icon: Icons.palette,
+                  label: 'Appearance',
+                  isSelected: _selectedIndex == 3,
+                  onTap: () => setState(() => _selectedIndex = 3),
+                ),
             ],
           ),
         ),
@@ -109,6 +117,8 @@ class _SettingsPageState extends State<SettingsPage> {
             return _buildShortcutsContent(shortcutsProvider);
           case 2:
             return _buildConnectionContent();
+          case 3:
+            return Platform.isWindows ? _buildAppearanceContent() : _buildProfileContent();
           default:
             return _buildProfileContent();
         }
@@ -224,6 +234,10 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildAppearanceContent() {
+    return _AppearanceSettings();
   }
 }
 
@@ -1014,6 +1028,110 @@ class _ProfileEditFormState extends State<_ProfileEditForm> {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _AppearanceSettings extends StatefulWidget {
+  const _AppearanceSettings();
+
+  @override
+  State<_AppearanceSettings> createState() => _AppearanceSettingsState();
+}
+
+class _AppearanceSettingsState extends State<_AppearanceSettings> {
+  bool _undetectable = false;
+  bool _skipTaskbar = true;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() => _isLoading = true);
+    final undetectable = await AppearanceService.getUndetectable();
+    final skipTaskbar = await AppearanceService.getSkipTaskbar();
+    setState(() {
+      _undetectable = undetectable;
+      _skipTaskbar = skipTaskbar;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _onUndetectableChanged(bool value) async {
+    setState(() => _undetectable = value);
+    await AppearanceService.setUndetectable(value);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(value 
+            ? 'Window is now undetectable in screen sharing'
+            : 'Window is now detectable in screen sharing'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onSkipTaskbarChanged(bool value) async {
+    setState(() => _skipTaskbar = value);
+    await AppearanceService.setSkipTaskbar(value);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(value 
+            ? 'Taskbar icon hidden'
+            : 'Taskbar icon shown'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Appearance',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 24),
+        if (_isLoading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: CircularProgressIndicator(),
+            ),
+          )
+        else ...[
+          Card(
+            child: SwitchListTile(
+              title: const Text('Undetectable in Screen Sharing'),
+              subtitle: const Text(
+                'Hide the window from screen capture and screen sharing applications',
+              ),
+              value: _undetectable,
+              onChanged: _onUndetectableChanged,
+              secondary: const Icon(Icons.visibility_off),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: SwitchListTile(
+              title: const Text('Hide Taskbar Icon'),
+              subtitle: const Text(
+                'Hide the app icon from the Windows taskbar',
+              ),
+              value: _skipTaskbar,
+              onChanged: _onSkipTaskbarChanged,
+              secondary: const Icon(Icons.task_alt),
+            ),
+          ),
+        ],
       ],
     );
   }

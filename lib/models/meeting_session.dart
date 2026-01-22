@@ -1,6 +1,6 @@
 import 'transcript_bubble.dart';
 
-class InterviewSession {
+class MeetingSession {
   final String id;
   final String title;
   final DateTime createdAt;
@@ -10,7 +10,7 @@ class InterviewSession {
   final String? insights;
   final Map<String, dynamic> metadata;
 
-  InterviewSession({
+  MeetingSession({
     required this.id,
     required this.title,
     required this.createdAt,
@@ -21,7 +21,7 @@ class InterviewSession {
     this.metadata = const {},
   });
 
-  InterviewSession copyWith({
+  MeetingSession copyWith({
     String? id,
     String? title,
     DateTime? createdAt,
@@ -31,7 +31,7 @@ class InterviewSession {
     String? insights,
     Map<String, dynamic>? metadata,
   }) {
-    return InterviewSession(
+    return MeetingSession(
       id: id ?? this.id,
       title: title ?? this.title,
       createdAt: createdAt ?? this.createdAt,
@@ -61,7 +61,7 @@ class InterviewSession {
     };
   }
 
-  factory InterviewSession.fromJson(Map<String, dynamic> json) {
+  factory MeetingSession.fromJson(Map<String, dynamic> json) {
     TranscriptSource sourceFromString(String s) {
       return switch (s) {
         'mic' => TranscriptSource.mic,
@@ -70,7 +70,7 @@ class InterviewSession {
       };
     }
 
-    return InterviewSession(
+    return MeetingSession(
       id: json['id'] as String,
       title: json['title'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),

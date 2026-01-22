@@ -1,23 +1,23 @@
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import '../models/interview_session.dart';
+import '../models/meeting_session.dart';
 import '../models/transcript_bubble.dart';
-import '../services/interview_storage_service.dart';
+import '../services/meeting_storage_service.dart';
 import '../services/ai_service.dart';
 
-class InterviewProvider extends ChangeNotifier {
-  final InterviewStorageService _storage = InterviewStorageService();
+class MeetingProvider extends ChangeNotifier {
+  final MeetingStorageService _storage = MeetingStorageService();
   AiService? _aiService;
 
-  InterviewSession? _currentSession;
-  List<InterviewSession> _sessions = [];
+  MeetingSession? _currentSession;
+  List<MeetingSession> _sessions = [];
   bool _isLoading = false;
   String _errorMessage = '';
   bool _isGeneratingSummary = false;
   bool _isGeneratingInsights = false;
   bool _isGeneratingQuestions = false;
 
-  InterviewProvider({AiService? aiService}) : _aiService = aiService;
+  MeetingProvider({AiService? aiService}) : _aiService = aiService;
 
   void setAiService(AiService? aiService) {
     _aiService = aiService;
@@ -27,8 +27,8 @@ class InterviewProvider extends ChangeNotifier {
     _aiService?.setAuthToken(token);
   }
 
-  InterviewSession? get currentSession => _currentSession;
-  List<InterviewSession> get sessions => List.unmodifiable(_sessions);
+  MeetingSession? get currentSession => _currentSession;
+  List<MeetingSession> get sessions => List.unmodifiable(_sessions);
   bool get isLoading => _isLoading;
   String get errorMessage => _errorMessage;
   bool get isGeneratingSummary => _isGeneratingSummary;
@@ -60,9 +60,9 @@ class InterviewProvider extends ChangeNotifier {
 
   Future<void> createNewSession({String? title}) async {
     final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
-    _currentSession = InterviewSession(
+    _currentSession = MeetingSession(
       id: sessionId,
-      title: title ?? 'Interview ${DateTime.now().toLocal().toString().substring(0, 16)}',
+      title: title ?? 'Meeting ${DateTime.now().toLocal().toString().substring(0, 16)}',
       createdAt: DateTime.now(),
       bubbles: [],
     );
