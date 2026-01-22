@@ -860,29 +860,41 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _askAiController,
-                    enabled: !speechProvider.isAiLoading,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Ask AI… (Ctrl+Enter)',
-                      hintStyle: TextStyle(color: Colors.white70),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.2),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.8)),
-                      ),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
                     ),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (value) => speechProvider.askAi(question: value),
+                    child: TextField(
+                      controller: _askAiController,
+                      enabled: !speechProvider.isAiLoading,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(color: Colors.black, blurRadius: 4, offset: Offset(1, 1)),
+                          Shadow(color: Colors.black, blurRadius: 6, offset: Offset(-1, -1)),
+                        ],
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Ask AI… (Ctrl+Enter)',
+                        hintStyle: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          shadows: [
+                            Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                            Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                          ],
+                        ),
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                      ),
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (value) => speechProvider.askAi(question: value),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -1065,29 +1077,41 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
           child: Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _askAiController,
-                  enabled: !speechProvider.isAiLoading,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Ask AI… (Ctrl+Enter)',
-                    hintStyle: TextStyle(color: Colors.white70),
-                    filled: true,
-                    fillColor: Colors.white.withValues(alpha: 0.2),
-                    border: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.5)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.8)),
-                    ),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
                   ),
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (value) => speechProvider.askAi(question: value),
+                  child: TextField(
+                    controller: _askAiController,
+                    enabled: !speechProvider.isAiLoading,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      shadows: [
+                        Shadow(color: Colors.black, blurRadius: 4, offset: Offset(1, 1)),
+                        Shadow(color: Colors.black, blurRadius: 6, offset: Offset(-1, -1)),
+                      ],
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Ask AI… (Ctrl+Enter)',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        shadows: [
+                          Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                          Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                        ],
+                      ),
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                    ),
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (value) => speechProvider.askAi(question: value),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
