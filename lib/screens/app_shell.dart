@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
+import 'package:provider/provider.dart';
+import 'dart:io' show Platform;
 
 import 'home_page.dart';
 import 'settings_page.dart';
 import 'interview_page_enhanced.dart';
+import '../providers/shortcuts_provider.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -16,9 +21,40 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
+    return Consumer<ShortcutsProvider>(
+      builder: (context, shortcutsProvider, child) {
+        // Get toggle hide shortcut from provider
+        final toggleHide = shortcutsProvider.getShortcutActivator('toggleHide');
+        final shortcuts = <ShortcutActivator, Intent>{};
+        if (Platform.isWindows && toggleHide != null) {
+          shortcuts[toggleHide] = _ToggleHideIntent();
+        }
+        
+        return Shortcuts(
+          shortcuts: shortcuts,
+          child: Actions(
+            actions: {
+              if (Platform.isWindows)
+                _ToggleHideIntent: CallbackAction<_ToggleHideIntent>(
+                  onInvoke: (_) async {
+                    if (Platform.isWindows) {
+                      final isMinimized = await windowManager.isMinimized();
+                      if (isMinimized) {
+                        await windowManager.show();
+                        await windowManager.focus();
+                      } else {
+                        await windowManager.minimize();
+                      }
+                    }
+                    return null;
+                  },
+                ),
+            },
+            child: Focus(
+              autofocus: true,
+              child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: Stack(
         children: [
           // Title bar background for visibility
           Positioned(
@@ -80,6 +116,15 @@ class _AppShellState extends State<AppShell> {
           ),
         ],
       ),
+            ),
+          ),
+        ),
+      );
+      },
     );
   }
+}
+
+class _ToggleHideIntent extends Intent {
+  const _ToggleHideIntent();
 }

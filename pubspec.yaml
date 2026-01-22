@@ -54,6 +54,9 @@ dependencies:
   
   # Window management for transparency and always-on-top
   window_manager: ^0.3.8
+  
+  # Preferences storage for shortcuts
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:

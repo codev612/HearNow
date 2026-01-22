@@ -4,6 +4,7 @@ import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 import 'providers/speech_to_text_provider.dart';
 import 'providers/interview_provider.dart';
+import 'providers/shortcuts_provider.dart';
 import 'services/ai_service.dart';
 import 'config/app_config.dart';
 import 'screens/app_shell.dart';
@@ -18,7 +19,7 @@ void main() async {
     WindowOptions windowOptions = const WindowOptions(
       size: Size(1200, 800),
       backgroundColor: Colors.transparent,
-      skipTaskbar: false,
+      skipTaskbar: true,
       titleBarStyle: TitleBarStyle.normal,
       alwaysOnTop: true,
     );
@@ -26,6 +27,7 @@ void main() async {
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setAlwaysOnTop(true);
+      await windowManager.setSkipTaskbar(true);
       await windowManager.show();
       await windowManager.focus();
     });
@@ -58,6 +60,12 @@ class MyApp extends StatelessWidget {
                   aiWsUrl: AppConfig.serverAiWebSocketUrl,
                 ),
               ),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => ShortcutsProvider(              ),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => ShortcutsProvider(),
         ),
       ],
       child: MaterialApp(

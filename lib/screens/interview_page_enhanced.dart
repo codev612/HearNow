@@ -9,6 +9,7 @@ import '../models/interview_session.dart';
 import '../models/transcript_bubble.dart';
 import '../services/interview_question_service.dart';
 import '../services/ai_service.dart';
+import '../providers/shortcuts_provider.dart';
 
 class InterviewPageEnhanced extends StatefulWidget {
   const InterviewPageEnhanced({super.key});
@@ -1275,14 +1276,21 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
         }
 
         final session = interviewProvider.currentSession;
+        final shortcutsProvider = context.read<ShortcutsProvider>();
 
-        final shortcuts = <ShortcutActivator, Intent>{
-          const SingleActivator(LogicalKeyboardKey.keyR, control: true): const _ToggleRecordIntent(),
-          const SingleActivator(LogicalKeyboardKey.enter, control: true): const _AskAiIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyS, control: true): const _SaveSessionIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyE, control: true): const _ExportIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyM, control: true): const _MarkIntent(),
-        };
+        // Build shortcuts map from provider
+        final shortcuts = <ShortcutActivator, Intent>{};
+        final toggleRecord = shortcutsProvider.getShortcutActivator('toggleRecord');
+        final askAi = shortcutsProvider.getShortcutActivator('askAi');
+        final saveSession = shortcutsProvider.getShortcutActivator('saveSession');
+        final exportSession = shortcutsProvider.getShortcutActivator('exportSession');
+        final markMoment = shortcutsProvider.getShortcutActivator('markMoment');
+        
+        if (toggleRecord != null) shortcuts[toggleRecord] = const _ToggleRecordIntent();
+        if (askAi != null) shortcuts[askAi] = const _AskAiIntent();
+        if (saveSession != null) shortcuts[saveSession] = const _SaveSessionIntent();
+        if (exportSession != null) shortcuts[exportSession] = const _ExportIntent();
+        if (markMoment != null) shortcuts[markMoment] = const _MarkIntent();
 
         return Shortcuts(
           shortcuts: shortcuts,

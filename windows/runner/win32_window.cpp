@@ -2,6 +2,7 @@
 
 #include <dwmapi.h>
 #include <flutter_windows.h>
+#include <winuser.h>
 
 #include "resource.h"
 
@@ -24,6 +25,13 @@ namespace {
 #endif
 #ifndef DWMSBT_MAINWINDOW
 #define DWMSBT_MAINWINDOW 2
+#endif
+
+/// Window display affinity for excluding from screen capture.
+/// WDA_EXCLUDEFROMCAPTURE = 0x00000011
+/// Available in Windows 10 version 2004 and later
+#ifndef WDA_EXCLUDEFROMCAPTURE
+#define WDA_EXCLUDEFROMCAPTURE 0x00000011
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
@@ -155,6 +163,14 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
+  
+  // Exclude window from screen capture (screenshots, screen sharing)
+  // This makes the app undetectable during screen sharing
+  SetWindowDisplayAffinity(window, WDA_EXCLUDEFROMCAPTURE);
+  
+  // Register global hotkey Ctrl+H to toggle minimize/show
+  // MOD_CONTROL = Ctrl key, 0x48 = H key
+  RegisterHotKey(window, 1, MOD_CONTROL, 0x48);
 
   return OnCreate();
 }
@@ -223,6 +239,21 @@ Win32Window::MessageHandler(HWND hwnd,
       }
       return 0;
 
+    case WM_HOTKEY:
+      // Handle global hotkey Ctrl+H (id = 1)
+      if (wparam == 1) {
+        if (IsIconic(hwnd)) {
+          // Window is minimized, restore it
+          ShowWindow(hwnd, SW_RESTORE);
+          SetForegroundWindow(hwnd);
+          SetFocus(hwnd);
+        } else {
+          // Window is visible, minimize it
+          ShowWindow(hwnd, SW_MINIMIZE);
+        }
+      }
+      return 0;
+
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;
@@ -235,6 +266,8 @@ void Win32Window::Destroy() {
   OnDestroy();
 
   if (window_handle_) {
+    // Unregister global hotkey before destroying window
+    UnregisterHotKey(window_handle_, 1);
     DestroyWindow(window_handle_);
     window_handle_ = nullptr;
   }
