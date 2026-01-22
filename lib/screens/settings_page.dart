@@ -83,11 +83,14 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         Row(
           children: [
-            const Text(
-              'Keyboard Shortcuts',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Flexible(
+              child: Text(
+                'Keyboard Shortcuts',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             TextButton(
               onPressed: () async {
                 await shortcutsProvider.resetToDefaults();
@@ -153,6 +156,9 @@ class _SettingsPageState extends State<SettingsPage> {
           trailing: IconButton(
             tooltip: 'Copy',
             icon: const Icon(Icons.copy),
+            iconSize: 20,
+            constraints: const BoxConstraints(),
+            padding: EdgeInsets.zero,
             onPressed: () async {
               await Clipboard.setData(
                 ClipboardData(text: AppConfig.serverWebSocketUrl),
@@ -301,6 +307,9 @@ class _ShortcutTileState extends State<_ShortcutTile> {
           : IconButton(
               icon: const Icon(Icons.edit),
               tooltip: 'Edit shortcut',
+              iconSize: 20,
+              constraints: const BoxConstraints(),
+              padding: EdgeInsets.zero,
               onPressed: _captureShortcut,
             ),
     );

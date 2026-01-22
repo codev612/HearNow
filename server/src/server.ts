@@ -1,32 +1,74 @@
-import express from 'express';
-import { WebSocketServer } from 'ws';
+import express, { Request, Response } from 'express';
+import { WebSocketServer, WebSocket } from 'ws';
 import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import { createServer } from 'http';
+import { createServer, IncomingMessage } from 'http';
+import { Socket } from 'net';
+import authRoutes from './routes/auth.js';
+import { authenticate, verifyToken, AuthRequest, JWTPayload } from './auth.js';
+import { AuthenticatedWebSocket } from './types.js';
+import { connectDB, closeDB } from './database.js';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import fs from 'fs';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load .env file - try server directory first, then parent directory (project root)
+const serverEnvPath = join(__dirname, '../.env');
+const parentEnvPath = join(__dirname, '../../.env');
+
+if (fs.existsSync(serverEnvPath)) {
+  dotenv.config({ path: serverEnvPath });
+  console.log('✓ Loaded .env from server directory');
+} else if (fs.existsSync(parentEnvPath)) {
+  dotenv.config({ path: parentEnvPath });
+  console.log('✓ Loaded .env from project root');
+} else {
+  // Try default location (current working directory)
+  dotenv.config();
+  if (fs.existsSync('.env')) {
+    console.log('✓ Loaded .env from current working directory');
+  } else {
+    console.log('⚠ No .env file found - using environment variables and defaults');
+  }
+}
+
+// Initialize MongoDB connection
+connectDB().catch((error) => {
+  console.error('Failed to connect to MongoDB:', error);
+  process.exit(1);
+});
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
+// Serve static files from public directory
+const publicDir = join(__dirname, '../public');
+app.use(express.static(publicDir));
+
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'HearNow backend is running' });
 });
+
+// Authentication routes
+app.use('/api/auth', authRoutes);
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
-// AI response endpoint
+// AI response endpoint (protected)
 // Accepts a short transcript history and returns a single assistant reply.
-app.post('/ai/respond', async (req, res) => {
+app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     if (!openai) {
       return res.status(500).json({
@@ -55,7 +97,7 @@ app.post('/ai/respond', async (req, res) => {
     }
 
     const normalized = turns
-      .map((t) => ({
+      .map((t: any) => ({
         source: String(t?.source ?? 'unknown'),
         text: String(t?.text ?? '').trim(),
       }))
@@ -73,8 +115,8 @@ app.post('/ai/respond', async (req, res) => {
 
     const requestMode = ['summary', 'insights', 'questions'].includes(mode) ? mode : 'reply';
 
-    let systemPrompt;
-    let userPrompt;
+    let systemPrompt: string;
+    let userPrompt: string;
     
     const historyText = normalized
       .map((t) => {
@@ -135,7 +177,7 @@ app.post('/ai/respond', async (req, res) => {
 
     const text = completion?.choices?.[0]?.message?.content ?? '';
     return res.json({ text });
-  } catch (error) {
+  } catch (error: any) {
     console.error('AI respond error:', error);
     const status = typeof error?.status === 'number' ? error.status : 500;
     const message =
@@ -154,41 +196,76 @@ const server = createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 const aiWss = new WebSocketServer({ noServer: true });
 
-server.on('upgrade', (req, socket, head) => {
+// Extend IncomingMessage to include user
+interface AuthenticatedIncomingMessage extends IncomingMessage {
+  user?: JWTPayload;
+}
+
+server.on('upgrade', (req: AuthenticatedIncomingMessage, socket: Socket, head: Buffer) => {
   try {
+    if (!req.url || !req.headers.host) {
+      socket.destroy();
+      return;
+    }
+
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathname = url.pathname;
 
+    // Extract token from query string or Authorization header
+    const token = url.searchParams.get('token') || 
+                  req.headers.authorization?.replace('Bearer ', '');
+
+    // Verify token for WebSocket connections
+    if (token) {
+      const decoded = verifyToken(token);
+      if (!decoded) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      req.user = decoded;
+    } else {
+      // Require authentication for WebSocket connections
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
     if (pathname === '/listen') {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit('connection', ws, req);
+      wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+        const authWs = ws as AuthenticatedWebSocket;
+        authWs.user = req.user;
+        wss.emit('connection', authWs, req);
       });
       return;
     }
 
     if (pathname === '/ai') {
-      aiWss.handleUpgrade(req, socket, head, (ws) => {
-        aiWss.emit('connection', ws, req);
+      aiWss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
+        const authWs = ws as AuthenticatedWebSocket;
+        authWs.user = req.user;
+        aiWss.emit('connection', authWs, req);
       });
       return;
     }
 
     socket.destroy();
-  } catch (_) {
+  } catch (error) {
+    console.error('WebSocket upgrade error:', error);
     socket.destroy();
   }
 });
 
 // Deepgram client
-const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
+const deepgram = createClient(process.env.DEEPGRAM_API_KEY || '');
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws: WebSocket) => {
   console.log('Client connected');
 
-  let deepgramMic = null;
-  let deepgramSystem = null;
+  let deepgramMic: any = null;
+  let deepgramSystem: any = null;
 
-  const startDeepgram = (source) => {
+  const startDeepgram = (source: 'mic' | 'system') => {
     const live = deepgram.listen.live({
       model: 'nova-3',
       language: 'en',
@@ -204,8 +281,8 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify({ type: 'status', message: `ready:${source}` }));
     });
 
-    live.on(LiveTranscriptionEvents.Transcript, (data) => {
-      const transcript = data.channel.alternatives[0]?.transcript;
+    live.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+      const transcript = data.channel?.alternatives?.[0]?.transcript;
       if (transcript) {
         const isFinal = data.is_final === true;
         const isInterim = data.is_final === false;
@@ -222,7 +299,7 @@ wss.on('connection', (ws) => {
       }
     });
 
-    live.on(LiveTranscriptionEvents.Error, (error) => {
+    live.on(LiveTranscriptionEvents.Error, (error: any) => {
       console.error(`Deepgram error (${source}):`, error);
       ws.send(
         JSON.stringify({
@@ -242,11 +319,11 @@ wss.on('connection', (ws) => {
   };
 
   // Handle incoming messages from client
-  ws.on('message', async (message) => {
+  ws.on('message', async (message: Buffer | string) => {
     try {
       // ws can deliver Buffer; convert to string before JSON.parse.
       const text = typeof message === 'string' ? message : message.toString('utf8');
-      let data;
+      let data: any;
       try {
         data = JSON.parse(text);
       } catch (_) {
@@ -282,9 +359,9 @@ wss.on('connection', (ws) => {
 
           deepgramMic = startDeepgram('mic');
           deepgramSystem = startDeepgram('system');
-        } catch (error) {
+        } catch (error: any) {
           console.error('Failed to start Deepgram connection:', error);
-          ws.send(JSON.stringify({ type: 'error', message: 'Failed to connect to Deepgram: ' + error.message }));
+          ws.send(JSON.stringify({ type: 'error', message: 'Failed to connect to Deepgram: ' + (error.message || 'Unknown error') }));
           deepgramMic = null;
           deepgramSystem = null;
         }
@@ -298,7 +375,7 @@ wss.on('connection', (ws) => {
         try {
           const audioBuffer = Buffer.from(data.audio, 'base64');
           target.send(audioBuffer);
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error sending audio to Deepgram:', error);
           ws.send(JSON.stringify({ type: 'error', message: 'Error processing audio' }));
         }
@@ -315,7 +392,7 @@ wss.on('connection', (ws) => {
         }
         ws.send(JSON.stringify({ type: 'status', message: 'stopped' }));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing message:', error);
       try {
         ws.send(JSON.stringify({ type: 'error', message: error?.message ?? 'Server error' }));
@@ -323,36 +400,37 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', (code, reason) => {
+  ws.on('close', (code: number, reason: Buffer) => {
     console.log('Client disconnected', { code, reason: reason?.toString?.() ?? '' });
     if (deepgramMic) deepgramMic.finish();
     if (deepgramSystem) deepgramSystem.finish();
   });
 
-  ws.on('error', (error) => {
+  ws.on('error', (error: Error) => {
     console.error('WebSocket error:', error);
   });
 });
 
 // AI WebSocket server (streams tokens to the client)
-aiWss.on('connection', (ws) => {
+aiWss.on('connection', (ws: WebSocket) => {
   console.log('AI client connected');
 
   // Only allow one in-flight request per socket for simplicity.
-  let currentRequestId = null;
+  let currentRequestId: string | null = null;
   let cancelled = false;
 
-  const send = (obj) => {
+  const send = (obj: any) => {
     try {
       ws.send(JSON.stringify(obj));
     } catch (_) {}
   };
 
-  ws.on('message', async (message) => {
+  ws.on('message', async (message: Buffer | string) => {
     try {
-      let data;
+      let data: any;
       try {
-        data = JSON.parse(message);
+        const text = typeof message === 'string' ? message : message.toString('utf8');
+        data = JSON.parse(text);
       } catch (_) {
         return;
       }
@@ -403,7 +481,7 @@ aiWss.on('connection', (ws) => {
       }
 
       const normalized = turns
-        .map((t) => ({
+        .map((t: any) => ({
           source: String(t?.source ?? 'unknown'),
           text: String(t?.text ?? '').trim(),
         }))
@@ -420,8 +498,8 @@ aiWss.on('connection', (ws) => {
       }
 
       const requestMode = ['summary', 'insights', 'questions'].includes(mode) ? mode : 'reply';
-      let systemPrompt;
-      let userPrompt;
+      let systemPrompt: string;
+      let userPrompt: string;
 
       const historyText = normalized
         .map((t) => {
@@ -508,13 +586,13 @@ aiWss.on('connection', (ws) => {
         }
 
         return send({ type: 'ai_done', requestId, cancelled: false, text: fullText });
-      } catch (error) {
+      } catch (error: any) {
         console.error('AI WS error:', error);
         const status = typeof error?.status === 'number' ? error.status : 500;
         const msg = error?.error?.message || error?.message || 'Failed to generate AI response';
         return send({ type: 'ai_error', requestId, status, message: msg });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI WS message error:', error);
       try {
         ws.send(JSON.stringify({ type: 'ai_error', requestId: null, status: 500, message: 'Internal error' }));
@@ -526,7 +604,7 @@ aiWss.on('connection', (ws) => {
     console.log('AI client disconnected');
   });
 
-  ws.on('error', (error) => {
+  ws.on('error', (error: Error) => {
     console.error('AI WebSocket error:', error);
   });
 });
@@ -535,11 +613,29 @@ server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`WebSocket endpoint: ws://localhost:${PORT}/listen`);
   console.log(`AI WebSocket endpoint: ws://localhost:${PORT}/ai`);
+  console.log(`Frontend available at: http://localhost:${PORT}`);
   if (!process.env.DEEPGRAM_API_KEY) {
     console.warn('WARNING: DEEPGRAM_API_KEY environment variable not set!');
   }
   if (!process.env.OPENAI_API_KEY) {
     console.warn('WARNING: OPENAI_API_KEY environment variable not set!');
   }
+  // Check MongoDB URI (database.ts will handle the warning)
+  const mongoUri = process.env.MONGODB_URI;
+  if (mongoUri) {
+    console.log(`MongoDB URI configured: ${mongoUri.replace(/\/\/.*@/, '//***:***@')}`); // Hide credentials
+  }
 });
 
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\nShutting down gracefully...');
+  await closeDB();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\nShutting down gracefully...');
+  await closeDB();
+  process.exit(0);
+});

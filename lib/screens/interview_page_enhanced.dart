@@ -1357,134 +1357,151 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
             },
             child: Focus(
               autofocus: true,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Session title and actions (rare actions in menu; core actions are docked)
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
-                            child: Text(
-                              session?.title ?? 'Untitled Session',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.white,
-                                shadows: [
-                                  Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
-                                  Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
-                                ],
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Toggle conversation panel visibility (always visible)
-                        Tooltip(
-                          message: _showConversationPanel ? 'Hide conversation' : 'Show conversation',
-                          child: IconButton(
-                            icon: Icon(_showConversationPanel ? Icons.chat_bubble_outline : Icons.chat_bubble_outline, size: 20),
-                            onPressed: () => setState(() => _showConversationPanel = !_showConversationPanel),
-                            visualDensity: VisualDensity.compact,
-                            iconSize: 20,
-                            color: _showConversationPanel ? Colors.blue : Colors.grey,
-                          ),
-                        ),
-                        // Toggle AI panel visibility (always visible)
-                        Tooltip(
-                          message: _showAiPanel ? 'Hide AI response' : 'Show AI response',
-                          child: IconButton(
-                            icon: Icon(_showAiPanel ? Icons.auto_awesome_outlined : Icons.auto_awesome_outlined, size: 20),
-                            onPressed: () => setState(() => _showAiPanel = !_showAiPanel),
-                            visualDensity: VisualDensity.compact,
-                            iconSize: 20,
-                            color: _showAiPanel ? Colors.deepPurple : Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.file_download),
-                          tooltip: 'Export (Ctrl+E)',
-                          onPressed: session == null ? null : _exportSession,
-                          color: Colors.white,
-                        ),
-                        PopupMenuButton(
-                          icon: const Icon(Icons.more_vert, color: Colors.white),
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'sessions',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.folder, size: 20),
-                                  SizedBox(width: 8),
-                                  Text('Manage Sessions'),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem(
-                              value: 'new',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.add, size: 20),
-                                  SizedBox(width: 8),
-                                  Text('New Session'),
-                                ],
-                              ),
-                            ),
-                          ],
-                          onSelected: (value) {
-                            if (value == 'sessions') {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const SessionsListPage(),
-                                ),
-                              );
-                            } else if (value == 'new') {
-                              interviewProvider.createNewSession();
-                            }
-                          },
-                        ),
-                      ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Dark background section extending from top to split line
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
                     ),
-                    const SizedBox(height: 16),
-
-                    // Error message
-                    if (speechProvider.errorMessage.isNotEmpty ||
-                        interviewProvider.errorMessage.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error, color: Colors.red),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                speechProvider.errorMessage.isNotEmpty
-                                    ? speechProvider.errorMessage
-                                    : interviewProvider.errorMessage,
-                                style: TextStyle(color: Colors.red.shade900),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Session title and actions (rare actions in menu; core actions are docked)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 4.0),
+                                  child: Text(
+                                    session?.title ?? 'Untitled Session',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.white,
+                                      shadows: [
+                                        Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                                        Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                                      ],
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Toggle conversation panel visibility (always visible)
+                              Tooltip(
+                                message: _showConversationPanel ? 'Hide conversation' : 'Show conversation',
+                                child: IconButton(
+                                  icon: Icon(_showConversationPanel ? Icons.chat_bubble_outline : Icons.chat_bubble_outline, size: 20),
+                                  onPressed: () => setState(() => _showConversationPanel = !_showConversationPanel),
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 20,
+                                  color: _showConversationPanel ? Colors.blue : Colors.grey,
+                                ),
+                              ),
+                              // Toggle AI panel visibility (always visible)
+                              Tooltip(
+                                message: _showAiPanel ? 'Hide AI response' : 'Show AI response',
+                                child: IconButton(
+                                  icon: Icon(_showAiPanel ? Icons.auto_awesome_outlined : Icons.auto_awesome_outlined, size: 20),
+                                  onPressed: () => setState(() => _showAiPanel = !_showAiPanel),
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 20,
+                                  color: _showAiPanel ? Colors.deepPurple : Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(Icons.file_download),
+                                tooltip: 'Export (Ctrl+E)',
+                                onPressed: session == null ? null : _exportSession,
+                                color: Colors.white,
+                              ),
+                              PopupMenuButton(
+                                icon: const Icon(Icons.more_vert, color: Colors.white),
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'sessions',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.folder, size: 20),
+                                        SizedBox(width: 8),
+                                        Text('Manage Sessions'),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'new',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.add, size: 20),
+                                        SizedBox(width: 8),
+                                        Text('New Session'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                onSelected: (value) {
+                                  if (value == 'sessions') {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const SessionsListPage(),
+                                      ),
+                                    );
+                                  } else if (value == 'new') {
+                                    interviewProvider.createNewSession();
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Content area with padding
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Error message
+                          if (speechProvider.errorMessage.isNotEmpty ||
+                              interviewProvider.errorMessage.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.error, color: Colors.red),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      speechProvider.errorMessage.isNotEmpty
+                                          ? speechProvider.errorMessage
+                                          : interviewProvider.errorMessage,
+                                      style: TextStyle(color: Colors.red.shade900),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ],
-                        ),
-                      ),
 
-                    Expanded(
-                      child: Stack(
-                        children: [
-                          LayoutBuilder(
-                            builder: (context, constraints) {
+                          Expanded(
+                            child: Stack(
+                              children: [
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
                               final twoColumn = constraints.maxWidth >= 900;
 
                               if (!twoColumn) {
@@ -1545,11 +1562,14 @@ class _InterviewPageEnhancedState extends State<InterviewPageEnhanced> {
                               );
                             },
                           ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
