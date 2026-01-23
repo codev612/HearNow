@@ -252,13 +252,18 @@ class SpeechToTextProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> startRecording() async {
+  Future<void> startRecording({bool clearExisting = false}) async {
     try {
       print('[SpeechToTextProvider] Starting recording...');
       _errorMessage = '';
       _audioFrameCount = 0;
       _isSystemAudioCapturing = false;
-      _bubbles.clear();
+      
+      // Only clear bubbles if explicitly requested (for new sessions)
+      // When resuming, preserve existing bubbles
+      if (clearExisting) {
+        _bubbles.clear();
+      }
       
       // Request permissions
       final hasPermission = await requestPermissions();
@@ -376,6 +381,12 @@ class SpeechToTextProvider extends ChangeNotifier {
     _errorMessage = '';
     _aiResponse = '';
     _aiErrorMessage = '';
+    notifyListeners();
+  }
+
+  void restoreBubbles(List<TranscriptBubble> bubbles) {
+    _bubbles.clear();
+    _bubbles.addAll(bubbles);
     notifyListeners();
   }
 

@@ -40,11 +40,12 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   bool _showAiControls = true;
   bool _showConversationPanel = true;
   bool _showAiPanel = true;
+  bool _isUpdatingBubbles = false; // Flag to prevent infinite loops
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authProvider = context.read<AuthProvider>();
       _speechProvider = context.read<SpeechToTextProvider>();
       _meetingProvider = context.read<MeetingProvider>();
@@ -56,22 +57,94 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
         authToken: authToken,
       );
       
-      // Update AI service with auth token
-      _meetingProvider!.updateAuthToken(authToken);
+      // Update AI service with auth token (but don't restore session here - we'll handle it below)
+      _meetingProvider!.setAuthTokensOnly(authToken);
 
-      // Create new session if none exists
-      if (_meetingProvider!.currentSession == null) {
-        _meetingProvider!.createNewSession();
+      // Check if we should restore session or start fresh
+      final currentSession = _meetingProvider!.currentSession;
+      
+      if (currentSession != null) {
+        // We have a current session
+        // Check if it's a new session (timestamp ID) - if so, clear bubbles and don't restore anything
+        final isNewSession = _meetingProvider!.hasNewSession;
+        if (isNewSession) {
+          // It's a new session - clear any existing bubbles to start fresh
+          _speechProvider!.clearTranscript();
+        } else if (currentSession.bubbles.isNotEmpty) {
+          // Session has bubbles and is a saved session - restore them (user clicked a saved session)
+          _speechProvider!.restoreBubbles(currentSession.bubbles);
+        } else {
+          // Session exists but is empty (saved session with no bubbles) - clear bubbles
+          _speechProvider!.clearTranscript();
+        }
+      } else {
+        // No current session - try to restore last session, or create new
+        await _meetingProvider!.ensureSessionRestored();
+        final restoredSession = _meetingProvider!.currentSession;
+        if (restoredSession != null && restoredSession.bubbles.isNotEmpty) {
+          _speechProvider!.restoreBubbles(restoredSession.bubbles);
+        } else if (_meetingProvider!.currentSession == null) {
+          // Create new session if none exists
+          await _meetingProvider!.createNewSession();
+          // Clear bubbles for new session
+          _speechProvider!.clearTranscript();
+        }
       }
 
       // Sync bubbles to meeting session
       _speechProvider!.addListener(_syncBubblesToSession);
+      
+      // Listen for session changes to restore bubbles when session is loaded
+      _meetingProvider!.addListener(_onSessionChanged);
     });
   }
 
   void _syncBubblesToSession() {
-    if (_meetingProvider?.currentSession != null && _speechProvider != null) {
-      _meetingProvider!.updateCurrentSessionBubbles(_speechProvider!.bubbles);
+    // Prevent infinite loop - don't sync if we're already updating bubbles
+    if (_isUpdatingBubbles) return;
+    if (_meetingProvider?.currentSession == null || _speechProvider == null) return;
+    
+    // Only update if bubbles actually changed
+    final currentBubbles = _speechProvider!.bubbles;
+    final sessionBubbles = _meetingProvider!.currentSession!.bubbles;
+    if (currentBubbles.length != sessionBubbles.length ||
+        (currentBubbles.isNotEmpty && sessionBubbles.isNotEmpty && 
+         currentBubbles.first.text != sessionBubbles.first.text)) {
+      _meetingProvider!.updateCurrentSessionBubbles(currentBubbles);
+    }
+  }
+
+  void _onSessionChanged() {
+    // Prevent infinite loop - don't process if we're already updating bubbles
+    if (_isUpdatingBubbles) return;
+    
+    // When session changes (e.g., loaded from home page), restore or clear bubbles
+    final currentSession = _meetingProvider?.currentSession;
+    if (currentSession != null && _speechProvider != null) {
+      _isUpdatingBubbles = true;
+      try {
+        // Don't restore if it's a new session (timestamp ID) - only restore saved sessions
+        final isNewSession = _meetingProvider?.hasNewSession ?? false;
+        if (isNewSession) {
+          // It's a new session, clear bubbles
+          _speechProvider!.clearTranscript();
+          return;
+        }
+        
+        // It's a saved session
+        if (currentSession.bubbles.isNotEmpty) {
+          // Session has bubbles - restore them if speech provider bubbles are empty or different
+          if (_speechProvider!.bubbles.isEmpty || 
+              _speechProvider!.bubbles.length != currentSession.bubbles.length) {
+            _speechProvider!.restoreBubbles(currentSession.bubbles);
+          }
+        } else {
+          // Session has no bubbles - clear any existing bubbles
+          _speechProvider!.clearTranscript();
+        }
+      } finally {
+        _isUpdatingBubbles = false;
+      }
     }
   }
 
@@ -82,6 +155,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     _askAiController.dispose();
     _aiResponseController.dispose();
     _speechProvider?.removeListener(_syncBubblesToSession);
+    _meetingProvider?.removeListener(_onSessionChanged);
     super.dispose();
   }
 
@@ -152,6 +226,12 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
 
   Future<void> _markMoment() async {
     final meetingProvider = context.read<MeetingProvider>();
+    
+    // Ensure a session exists
+    if (meetingProvider.currentSession == null) {
+      await meetingProvider.createNewSession();
+    }
+    
     final now = DateTime.now();
     final elapsed = _recordingStartedAt == null ? null : now.difference(_recordingStartedAt!);
 
@@ -218,8 +298,18 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     });
 
     setState(() => _showMarkers = true);
+    
+    // Show snackbar with option to view markers
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Marked moment')),
+      SnackBar(
+        content: const Text('Marked moment'),
+        action: SnackBarAction(
+          label: 'View all',
+          onPressed: () => _showMarkersDialog(meetingProvider),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 
@@ -278,41 +368,66 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
           width: 720,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 420),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: meetingProvider.markers.length,
-              separatorBuilder: (_, __) => const Divider(height: 12),
-              itemBuilder: (context, index) {
-                final m = meetingProvider.markers[index];
-                final at = (m['at']?.toString() ?? '').trim();
-                final label = (m['label']?.toString() ?? '').trim();
-                final text = (m['text']?.toString() ?? '').trim();
-                final source = (m['source']?.toString() ?? '').trim();
-                final display = [
-                  if (at.isNotEmpty) at,
-                  if (source.isNotEmpty) '[$source]',
-                  if (label.isNotEmpty) label,
-                ].join(' ');
-                return ListTile(
-                  title: Text(display.isEmpty ? 'Marker' : display),
-                  subtitle: text.isEmpty ? null : Text(text),
-                  onTap: () async {
-                    final clip = [
-                      if (at.isNotEmpty) at,
-                      if (source.isNotEmpty) '[$source]',
-                      if (label.isNotEmpty) label,
-                      if (text.isNotEmpty) '\n$text',
-                    ].join(' ');
-                    await Clipboard.setData(ClipboardData(text: clip.trim()));
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Marker copied')),
-                    );
-                  },
-                );
-              },
-            ),
+            child: meetingProvider.markers.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.bookmarks_outlined,
+                          size: 48,
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No markers yet',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Click the bookmark icon in the conversation control bar (or press Ctrl+M) to mark important moments during your meeting.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: meetingProvider.markers.length,
+                    separatorBuilder: (_, __) => const Divider(height: 12),
+                    itemBuilder: (context, index) {
+                      final m = meetingProvider.markers[index];
+                      final at = (m['at']?.toString() ?? '').trim();
+                      final label = (m['label']?.toString() ?? '').trim();
+                      final text = (m['text']?.toString() ?? '').trim();
+                      final source = (m['source']?.toString() ?? '').trim();
+                      final display = [
+                        if (at.isNotEmpty) at,
+                        if (source.isNotEmpty) '[$source]',
+                        if (label.isNotEmpty) label,
+                      ].join(' ');
+                      return ListTile(
+                        title: Text(display.isEmpty ? 'Marker' : display),
+                        subtitle: text.isEmpty ? null : Text(text),
+                        onTap: () async {
+                          final clip = [
+                            if (at.isNotEmpty) at,
+                            if (source.isNotEmpty) '[$source]',
+                            if (label.isNotEmpty) label,
+                            if (text.isNotEmpty) '\n$text',
+                          ].join(' ');
+                          await Clipboard.setData(ClipboardData(text: clip.trim()));
+                          if (!context.mounted) return;
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Marker copied')),
+                          );
+                        },
+                      );
+                    },
+                  ),
           ),
         ),
         actions: [
@@ -469,9 +584,23 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     }
   }
 
-  Future<void> _generateSuggestedQuestions() async {
+  Future<void> _generateSuggestedQuestions({bool regenerate = false}) async {
     final meetingProvider = context.read<MeetingProvider>();
-    final questions = await meetingProvider.generateQuestions();
+    final session = meetingProvider.currentSession;
+    
+    // If questions exist and not regenerating, use existing
+    if (!regenerate && session?.questions != null && session!.questions!.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _suggestedQuestions = session.questions!;
+          _showQuestionSuggestions = true;
+        });
+      }
+      return;
+    }
+    
+    // Generate questions
+    final questions = await meetingProvider.generateQuestions(regenerate: regenerate);
     if (questions.isNotEmpty && mounted) {
       setState(() {
         _suggestedQuestions = questions;
@@ -552,11 +681,18 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   Widget _buildTranscript(SpeechToTextProvider speechProvider) {
     final bubbles = speechProvider.bubbles;
     final hasAny = bubbles.isNotEmpty;
+    final meetingProvider = context.read<MeetingProvider>();
+    final currentSession = meetingProvider.currentSession;
+    // A session is considered "saved" only if it has bubbles (content)
+    // New sessions that were just auto-saved but have no bubbles should still show "start"
+    final isSavedSession = currentSession != null && currentSession.bubbles.isNotEmpty;
 
     if (!hasAny) {
       return Center(
         child: Text(
-          'Tap the microphone button to start recording',
+          isSavedSession 
+              ? 'Tap the resume button to continue the meeting'
+              : 'Tap the start button to begin the meeting',
           style: TextStyle(
             color: Colors.white,
             fontSize: 16,
@@ -588,6 +724,13 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     _ensureRecordingClock(speechProvider);
     final isRec = speechProvider.isRecording;
     final elapsed = _recordingStartedAt == null ? null : DateTime.now().difference(_recordingStartedAt!);
+    
+    // Check if this is a saved session (has bubbles or valid MongoDB ObjectId)
+    final currentSession = meetingProvider.currentSession;
+    // A session is considered "saved" only if it has bubbles (content)
+    // New sessions that were just auto-saved but have no bubbles should still show "start"
+    final isSavedSession = currentSession != null && currentSession.bubbles.isNotEmpty;
+    final hasExistingBubbles = speechProvider.bubbles.isNotEmpty;
     const dockButtonSize = 48.0;
     final dockButtonStyle = IconButton.styleFrom(
       minimumSize: const Size(dockButtonSize, dockButtonSize),
@@ -696,13 +839,16 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                   ),
                 ),
               ] else
-                Text('Ready', style: TextStyle(
-                  color: Colors.white70,
-                  shadows: [
-                    Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
-                    Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
-                  ],
-                )),
+                Text(
+                  (isSavedSession || hasExistingBubbles) ? 'Ready to resume' : 'Ready',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    shadows: [
+                      Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
+                      Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -739,7 +885,18 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                           children: [
                             if (isRec)
                               IconButton.outlined(
-                                onPressed: speechProvider.stopRecording,
+                                onPressed: () async {
+                                  await speechProvider.stopRecording();
+                                  // Save session when stopping recording
+                                  if (_meetingProvider?.currentSession != null) {
+                                    try {
+                                      await _meetingProvider!.saveCurrentSession();
+                                    } catch (e) {
+                                      // Silently fail - session is auto-saved anyway
+                                      print('Failed to save session on stop: $e');
+                                    }
+                                  }
+                                },
                                 tooltip: 'Stop (Ctrl+R)',
                                 icon: const Icon(Icons.stop),
                                 style: IconButton.styleFrom(
@@ -756,9 +913,13 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                               )
                             else
                               IconButton.filled(
-                                onPressed: speechProvider.startRecording,
-                                tooltip: 'Record (Ctrl+R)',
-                                icon: const Icon(Icons.mic),
+                                onPressed: () {
+                                  // Don't clear bubbles when resuming a saved session
+                                  final shouldClear = !isSavedSession && !hasExistingBubbles;
+                                  speechProvider.startRecording(clearExisting: shouldClear);
+                                },
+                                tooltip: (isSavedSession || hasExistingBubbles) ? 'Resume (Ctrl+R)' : 'Start (Ctrl+R)',
+                                icon: Icon((isSavedSession || hasExistingBubbles) ? Icons.play_arrow : Icons.play_arrow),
                                 style: IconButton.styleFrom(
                                   minimumSize: const Size(dockButtonSize, dockButtonSize),
                                   maximumSize: const Size(dockButtonSize, dockButtonSize),
@@ -990,11 +1151,26 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                             runSpacing: 8,
                             children: [
                               IconButton.outlined(
-                                tooltip: 'Summary',
+                                tooltip: 'Summary (long-press to regenerate)',
                                 onPressed: meetingProvider.isGeneratingSummary
                                     ? null
                                     : () async {
-                                        await meetingProvider.generateSummary();
+                                        final session = meetingProvider.currentSession;
+                                        // If summary exists, show it directly
+                                        if (session?.summary != null && session!.summary!.isNotEmpty) {
+                                          await _showTextDialog(title: 'Summary', text: session.summary!);
+                                        } else {
+                                          // Generate if doesn't exist
+                                          await meetingProvider.generateSummary();
+                                          final s = meetingProvider.currentSession?.summary ?? '';
+                                          await _showTextDialog(title: 'Summary', text: s);
+                                        }
+                                      },
+                                onLongPress: meetingProvider.isGeneratingSummary
+                                    ? null
+                                    : () async {
+                                        // Force regenerate
+                                        await meetingProvider.generateSummary(regenerate: true);
                                         final s = meetingProvider.currentSession?.summary ?? '';
                                         await _showTextDialog(title: 'Summary', text: s);
                                       },
@@ -1004,11 +1180,26 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                 style: dockButtonStyle,
                               ),
                               IconButton.outlined(
-                                tooltip: 'Insights',
+                                tooltip: 'Insights (long-press to regenerate)',
                                 onPressed: meetingProvider.isGeneratingInsights
                                     ? null
                                     : () async {
-                                        await meetingProvider.generateInsights();
+                                        final session = meetingProvider.currentSession;
+                                        // If insights exist, show them directly
+                                        if (session?.insights != null && session!.insights!.isNotEmpty) {
+                                          await _showTextDialog(title: 'Insights', text: session.insights!);
+                                        } else {
+                                          // Generate if doesn't exist
+                                          await meetingProvider.generateInsights();
+                                          final s = meetingProvider.currentSession?.insights ?? '';
+                                          await _showTextDialog(title: 'Insights', text: s);
+                                        }
+                                      },
+                                onLongPress: meetingProvider.isGeneratingInsights
+                                    ? null
+                                    : () async {
+                                        // Force regenerate
+                                        await meetingProvider.generateInsights(regenerate: true);
                                         final s = meetingProvider.currentSession?.insights ?? '';
                                         await _showTextDialog(title: 'Insights', text: s);
                                       },
@@ -1018,11 +1209,25 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                 style: dockButtonStyle,
                               ),
                               IconButton.outlined(
-                                tooltip: 'Questions',
+                                tooltip: 'Questions (long-press to regenerate)',
                                 onPressed: meetingProvider.isGeneratingQuestions
                                     ? null
                                     : () async {
-                                        await _generateSuggestedQuestions();
+                                        final session = meetingProvider.currentSession;
+                                        // If questions exist, show them directly
+                                        if (session?.questions != null && session!.questions!.isNotEmpty) {
+                                          await _showTextDialog(title: 'Suggested Questions', text: session.questions!);
+                                        } else {
+                                          // Generate if doesn't exist
+                                          await _generateSuggestedQuestions();
+                                          await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
+                                        }
+                                      },
+                                onLongPress: meetingProvider.isGeneratingQuestions
+                                    ? null
+                                    : () async {
+                                        // Force regenerate
+                                        await _generateSuggestedQuestions(regenerate: true);
                                         await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
                                       },
                                 icon: meetingProvider.isGeneratingQuestions
@@ -1031,8 +1236,8 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                 style: dockButtonStyle,
                               ),
                               IconButton.outlined(
-                                tooltip: 'Markers',
-                                onPressed: meetingProvider.markers.isEmpty ? null : () => _showMarkersDialog(meetingProvider),
+                                tooltip: 'Markers (${meetingProvider.markers.length})',
+                                onPressed: () => _showMarkersDialog(meetingProvider),
                                 icon: const Icon(Icons.bookmarks_outlined),
                                 style: dockButtonStyle,
                               ),
@@ -1206,11 +1411,26 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                           runSpacing: 8,
                           children: [
                             IconButton.outlined(
-                              tooltip: 'Summary',
+                              tooltip: 'Summary (long-press to regenerate)',
                             onPressed: meetingProvider.isGeneratingSummary
                                 ? null
                                 : () async {
-                                    await meetingProvider.generateSummary();
+                                    final session = meetingProvider.currentSession;
+                                    // If summary exists, show it directly
+                                    if (session?.summary != null && session!.summary!.isNotEmpty) {
+                                      await _showTextDialog(title: 'Summary', text: session.summary!);
+                                    } else {
+                                      // Generate if doesn't exist
+                                      await meetingProvider.generateSummary();
+                                      final s = meetingProvider.currentSession?.summary ?? '';
+                                      await _showTextDialog(title: 'Summary', text: s);
+                                    }
+                                  },
+                            onLongPress: meetingProvider.isGeneratingSummary
+                                ? null
+                                : () async {
+                                    // Force regenerate
+                                    await meetingProvider.generateSummary(regenerate: true);
                                     final s = meetingProvider.currentSession?.summary ?? '';
                                     await _showTextDialog(title: 'Summary', text: s);
                                   },
@@ -1220,11 +1440,26 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                             style: dockButtonStyle,
                           ),
                           IconButton.outlined(
-                            tooltip: 'Insights',
+                            tooltip: 'Insights (long-press to regenerate)',
                             onPressed: meetingProvider.isGeneratingInsights
                                 ? null
                                 : () async {
-                                    await meetingProvider.generateInsights();
+                                    final session = meetingProvider.currentSession;
+                                    // If insights exist, show them directly
+                                    if (session?.insights != null && session!.insights!.isNotEmpty) {
+                                      await _showTextDialog(title: 'Insights', text: session.insights!);
+                                    } else {
+                                      // Generate if doesn't exist
+                                      await meetingProvider.generateInsights();
+                                      final s = meetingProvider.currentSession?.insights ?? '';
+                                      await _showTextDialog(title: 'Insights', text: s);
+                                    }
+                                  },
+                            onLongPress: meetingProvider.isGeneratingInsights
+                                ? null
+                                : () async {
+                                    // Force regenerate
+                                    await meetingProvider.generateInsights(regenerate: true);
                                     final s = meetingProvider.currentSession?.insights ?? '';
                                     await _showTextDialog(title: 'Insights', text: s);
                                   },
@@ -1234,11 +1469,25 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                             style: dockButtonStyle,
                           ),
                           IconButton.outlined(
-                            tooltip: 'Questions',
+                            tooltip: 'Questions (long-press to regenerate)',
                             onPressed: meetingProvider.isGeneratingQuestions
                                 ? null
                                 : () async {
-                                    await _generateSuggestedQuestions();
+                                    final session = meetingProvider.currentSession;
+                                    // If questions exist, show them directly
+                                    if (session?.questions != null && session!.questions!.isNotEmpty) {
+                                      await _showTextDialog(title: 'Suggested Questions', text: session.questions!);
+                                    } else {
+                                      // Generate if doesn't exist
+                                      await _generateSuggestedQuestions();
+                                      await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
+                                    }
+                                  },
+                            onLongPress: meetingProvider.isGeneratingQuestions
+                                ? null
+                                : () async {
+                                    // Force regenerate
+                                    await _generateSuggestedQuestions(regenerate: true);
                                     await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
                                   },
                             icon: meetingProvider.isGeneratingQuestions
@@ -1247,8 +1496,8 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                             style: dockButtonStyle,
                           ),
                           IconButton.outlined(
-                            tooltip: 'Markers',
-                            onPressed: meetingProvider.markers.isEmpty ? null : () => _showMarkersDialog(meetingProvider),
+                            tooltip: 'Markers (${meetingProvider.markers.length})',
+                            onPressed: () => _showMarkersDialog(meetingProvider),
                             icon: const Icon(Icons.bookmarks_outlined),
                             style: dockButtonStyle,
                           ),
@@ -1328,11 +1577,28 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
           child: Actions(
             actions: <Type, Action<Intent>>{
               _ToggleRecordIntent: CallbackAction<_ToggleRecordIntent>(
-                onInvoke: (_) {
+                onInvoke: (_) async {
                   if (speechProvider.isRecording) {
-                    speechProvider.stopRecording();
+                    await speechProvider.stopRecording();
+                    // Save session when stopping recording via keyboard shortcut
+                    if (_meetingProvider?.currentSession != null) {
+                      try {
+                        await _meetingProvider!.saveCurrentSession();
+                      } catch (e) {
+                        // Silently fail - session is auto-saved anyway
+                        print('Failed to save session on stop: $e');
+                      }
+                    }
                   } else {
-                    speechProvider.startRecording();
+                    // Check if we should preserve existing bubbles (resume vs new)
+                    final meetingProvider = context.read<MeetingProvider>();
+                    final currentSession = meetingProvider.currentSession;
+                    // A session is considered "saved" only if it has bubbles (content)
+                    // New sessions that were just auto-saved but have no bubbles should still show "start"
+                    final isSavedSession = currentSession != null && currentSession.bubbles.isNotEmpty;
+                    final hasExistingBubbles = speechProvider.bubbles.isNotEmpty;
+                    final shouldClear = !isSavedSession && !hasExistingBubbles;
+                    speechProvider.startRecording(clearExisting: shouldClear);
                   }
                   return null;
                 },
@@ -1619,7 +1885,11 @@ class _SessionsListPageState extends State<SessionsListPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<MeetingProvider>().loadSessions();
+      final authProvider = context.read<AuthProvider>();
+      final meetingProvider = context.read<MeetingProvider>();
+      // Ensure auth token is set before loading sessions
+      meetingProvider.updateAuthToken(authProvider.token);
+      meetingProvider.loadSessions();
     });
   }
 

@@ -58,9 +58,30 @@ const getDbName = (): string => {
   return process.env.MONGODB_DB_NAME || 'hearnow';
 };
 
+// Meeting Session type definition
+export interface MeetingSession {
+  _id?: ObjectId;
+  id?: string; // For backward compatibility, will be _id.toString()
+  userId: string; // User who owns this session
+  title: string;
+  createdAt: Date | string;
+  updatedAt?: Date | string | null;
+  bubbles: Array<{
+    source: string;
+    text: string;
+    timestamp: Date | string;
+    isDraft: boolean;
+  }>;
+  summary?: string | null;
+  insights?: string | null;
+  questions?: string | null;
+  metadata?: Record<string, any>;
+}
+
 let client: MongoClient | null = null;
 let db: Db | null = null;
 let usersCollection: Collection<User> | null = null;
+let sessionsCollection: Collection<MeetingSession> | null = null;
 
 // Initialize MongoDB connection
 export const connectDB = async (): Promise<void> => {
@@ -89,6 +110,15 @@ export const connectDB = async (): Promise<void> => {
       await usersCollection.createIndex({ 'verification_code_expires': 1 });
       await usersCollection.createIndex({ 'reset_token_expires': 1 });
     }
+    
+    if (!sessionsCollection) {
+      sessionsCollection = db.collection<MeetingSession>('meeting_sessions');
+      
+      // Create indexes
+      await sessionsCollection.createIndex({ userId: 1 });
+      await sessionsCollection.createIndex({ createdAt: -1 });
+      await sessionsCollection.createIndex({ updatedAt: -1 });
+    }
   } catch (error) {
     console.error('MongoDB connection error:', error);
     throw error;
@@ -101,6 +131,14 @@ const getUsersCollection = (): Collection<User> => {
     throw new Error('Database not connected. Call connectDB() first.');
   }
   return usersCollection;
+};
+
+// Get sessions collection (ensure connection is established)
+export const getSessionsCollection = (): Collection<MeetingSession> => {
+  if (!sessionsCollection) {
+    throw new Error('Database not connected. Call connectDB() first.');
+  }
+  return sessionsCollection;
 };
 
 // Helper function to convert MongoDB user to API format
@@ -121,6 +159,33 @@ const toPublicUser = (doc: User | null): PublicUser | undefined => {
     name: doc.name || '',
     email_verified: doc.email_verified,
     created_at: doc.created_at,
+  };
+};
+
+// Helper function to format session for API response
+const formatSessionForApi = (session: MeetingSession): any => {
+  const formatDate = (date: Date | string | undefined | null): string | null => {
+    if (!date) return null;
+    if (date instanceof Date) return date.toISOString();
+    if (typeof date === 'string') return date;
+    return null;
+  };
+
+  return {
+    id: session._id?.toString() || session.id,
+    title: session.title,
+    createdAt: formatDate(session.createdAt),
+    updatedAt: formatDate(session.updatedAt),
+    bubbles: session.bubbles.map((b) => ({
+      source: b.source,
+      text: b.text,
+      timestamp: formatDate(b.timestamp),
+      isDraft: b.isDraft,
+    })),
+    summary: session.summary,
+    insights: session.insights,
+    questions: session.questions,
+    metadata: session.metadata || {},
   };
 };
 
@@ -486,6 +551,59 @@ export const clearPendingEmailChange = async (userId: string): Promise<void> => 
   );
 };
 
+// Meeting Session operations
+export const createMeetingSession = async (session: Omit<MeetingSession, '_id' | 'id'>): Promise<string> => {
+  const collection = getSessionsCollection();
+  const result = await collection.insertOne(session as Omit<MeetingSession, '_id'>);
+  return result.insertedId.toString();
+};
+
+export const getMeetingSession = async (sessionId: string, userId: string): Promise<any | null> => {
+  const collection = getSessionsCollection();
+  const session = await collection.findOne({
+    _id: new ObjectId(sessionId),
+    userId,
+  });
+  if (!session) return null;
+  return formatSessionForApi(session);
+};
+
+export const updateMeetingSession = async (
+  sessionId: string,
+  userId: string,
+  updates: Partial<Omit<MeetingSession, '_id' | 'id' | 'userId' | 'createdAt'>>
+): Promise<boolean> => {
+  const collection = getSessionsCollection();
+  const result = await collection.updateOne(
+    { _id: new ObjectId(sessionId), userId },
+    {
+      $set: {
+        ...updates,
+        updatedAt: new Date(),
+      },
+    }
+  );
+  return result.matchedCount > 0;
+};
+
+export const listMeetingSessions = async (userId: string): Promise<any[]> => {
+  const collection = getSessionsCollection();
+  const sessions = await collection
+    .find({ userId })
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .toArray();
+  return sessions.map((s) => formatSessionForApi(s));
+};
+
+export const deleteMeetingSession = async (sessionId: string, userId: string): Promise<boolean> => {
+  const collection = getSessionsCollection();
+  const result = await collection.deleteOne({
+    _id: new ObjectId(sessionId),
+    userId,
+  });
+  return result.deletedCount > 0;
+};
+
 // Close database connection
 export const closeDB = async (): Promise<void> => {
   if (client) {
@@ -493,6 +611,7 @@ export const closeDB = async (): Promise<void> => {
     client = null;
     db = null;
     usersCollection = null;
+    sessionsCollection = null;
     console.log('MongoDB connection closed');
   }
 };

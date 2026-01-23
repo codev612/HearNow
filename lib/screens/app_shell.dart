@@ -10,6 +10,8 @@ import 'meeting_page_enhanced.dart';
 import 'signin_page.dart';
 import '../providers/shortcuts_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/meeting_provider.dart';
+import '../providers/speech_to_text_provider.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -24,8 +26,13 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AuthProvider>(
-      builder: (context, authProvider, _) {
+    return Consumer2<AuthProvider, MeetingProvider>(
+      builder: (context, authProvider, meetingProvider, _) {
+        // Update auth token whenever auth state changes
+        if (authProvider.isAuthenticated) {
+          meetingProvider.updateAuthToken(authProvider.token);
+        }
+        
         // Show signin page if not authenticated
         if (!authProvider.isAuthenticated) {
           _wasAuthenticated = false;
@@ -99,7 +106,21 @@ class _AppShellState extends State<AppShell> {
                 Container(
                   color: Theme.of(context).colorScheme.surface,
                   child: HomePage(
-                    onStartMeeting: () => setState(() => _index = 1),
+                    onStartMeeting: () async {
+                      // Clear current session and create a new one when starting a new meeting
+                      final meetingProvider = context.read<MeetingProvider>();
+                      final speechProvider = context.read<SpeechToTextProvider>();
+                      await meetingProvider.clearCurrentSession();
+                      // Clear speech provider bubbles to start fresh
+                      speechProvider.clearTranscript();
+                      await meetingProvider.createNewSession();
+                      setState(() => _index = 1);
+                    },
+                    onLoadSession: () {
+                      // Just navigate to meeting page when loading an existing session
+                      // The session is already loaded by loadSession() call
+                      setState(() => _index = 1);
+                    },
                   ),
                 ),
                 // Meeting page remains transparent

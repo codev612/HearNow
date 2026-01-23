@@ -9,7 +9,16 @@ import { Socket } from 'net';
 import authRoutes from './routes/auth.js';
 import { authenticate, verifyToken, AuthRequest, JWTPayload } from './auth.js';
 import { AuthenticatedWebSocket } from './types.js';
-import { connectDB, closeDB } from './database.js';
+import {
+  connectDB,
+  closeDB,
+  createMeetingSession,
+  getMeetingSession,
+  updateMeetingSession,
+  listMeetingSessions,
+  deleteMeetingSession,
+  MeetingSession,
+} from './database.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
@@ -65,6 +74,153 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // Authentication routes
 app.use('/api/auth', authRoutes);
+
+// Meeting Session API endpoints (protected)
+app.post('/api/sessions', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const { id, title, createdAt, updatedAt, bubbles, summary, insights, questions, metadata } = req.body;
+
+    if (!title || !createdAt) {
+      return res.status(400).json({ error: 'Missing required fields: title, createdAt' });
+    }
+
+    const session: Omit<MeetingSession, '_id' | 'id'> = {
+      userId,
+      title: String(title),
+      createdAt: new Date(createdAt),
+      updatedAt: updatedAt ? new Date(updatedAt) : null,
+      bubbles: Array.isArray(bubbles) ? bubbles.map((b: any) => ({
+        source: String(b.source ?? 'unknown'),
+        text: String(b.text ?? ''),
+        timestamp: new Date(b.timestamp),
+        isDraft: Boolean(b.isDraft ?? false),
+      })) : [],
+      summary: summary ? String(summary) : null,
+      insights: insights ? String(insights) : null,
+      questions: questions ? String(questions) : null,
+      metadata: metadata && typeof metadata === 'object' ? metadata : {},
+    };
+
+    const sessionId = await createMeetingSession(session);
+    const savedSession = await getMeetingSession(sessionId, userId);
+    res.status(201).json(savedSession);
+  } catch (error: any) {
+    console.error('Error creating session:', error);
+    res.status(500).json({ error: error.message || 'Failed to create session' });
+  }
+});
+
+app.get('/api/sessions', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const sessions = await listMeetingSessions(userId);
+    res.json(sessions);
+  } catch (error: any) {
+    console.error('Error listing sessions:', error);
+    res.status(500).json({ error: error.message || 'Failed to list sessions' });
+  }
+});
+
+app.get('/api/sessions/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const sessionId = req.params.id;
+    const session = await getMeetingSession(sessionId, userId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    res.json(session);
+  } catch (error: any) {
+    console.error('Error getting session:', error);
+    res.status(500).json({ error: error.message || 'Failed to get session' });
+  }
+});
+
+app.put('/api/sessions/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const sessionId = req.params.id;
+    const { title, createdAt, updatedAt, bubbles, summary, insights, questions, metadata } = req.body;
+
+    // Check if sessionId is a valid MongoDB ObjectId
+    const isValidObjectId = /^[0-9a-fA-F]{24}$/.test(sessionId);
+    
+    if (!isValidObjectId) {
+      // If not a valid ObjectId, treat as new session creation
+      if (!title || !createdAt) {
+        return res.status(400).json({ error: 'Missing required fields: title, createdAt' });
+      }
+
+      const session: Omit<MeetingSession, '_id' | 'id'> = {
+        userId,
+        title: String(title),
+        createdAt: new Date(createdAt),
+        updatedAt: updatedAt ? new Date(updatedAt) : null,
+        bubbles: Array.isArray(bubbles) ? bubbles.map((b: any) => ({
+          source: String(b.source ?? 'unknown'),
+          text: String(b.text ?? ''),
+          timestamp: new Date(b.timestamp),
+          isDraft: Boolean(b.isDraft ?? false),
+        })) : [],
+        summary: summary ? String(summary) : null,
+        insights: insights ? String(insights) : null,
+        questions: questions ? String(questions) : null,
+        insights: insights ? String(insights) : null,
+        metadata: metadata && typeof metadata === 'object' ? metadata : {},
+      };
+
+      const newSessionId = await createMeetingSession(session);
+      const savedSession = await getMeetingSession(newSessionId, userId);
+      return res.status(201).json(savedSession);
+    }
+
+    // Valid ObjectId, try to update
+    const updates: any = {};
+    if (title !== undefined) updates.title = String(title);
+    if (updatedAt !== undefined) updates.updatedAt = new Date(updatedAt);
+    if (bubbles !== undefined) {
+      updates.bubbles = Array.isArray(bubbles) ? bubbles.map((b: any) => ({
+        source: String(b.source ?? 'unknown'),
+        text: String(b.text ?? ''),
+        timestamp: new Date(b.timestamp),
+        isDraft: Boolean(b.isDraft ?? false),
+      })) : [];
+    }
+    if (summary !== undefined) updates.summary = summary ? String(summary) : null;
+    if (insights !== undefined) updates.insights = insights ? String(insights) : null;
+    if (questions !== undefined) updates.questions = questions ? String(questions) : null;
+    if (metadata !== undefined) updates.metadata = metadata && typeof metadata === 'object' ? metadata : {};
+
+    const success = await updateMeetingSession(sessionId, userId, updates);
+    if (!success) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    const updatedSession = await getMeetingSession(sessionId, userId);
+    if (!updatedSession) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    res.json(updatedSession);
+  } catch (error: any) {
+    console.error('Error updating session:', error);
+    res.status(500).json({ error: error.message || 'Failed to update session' });
+  }
+});
+
+app.delete('/api/sessions/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const sessionId = req.params.id;
+    const success = await deleteMeetingSession(sessionId, userId);
+    if (!success) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    res.status(204).send();
+  } catch (error: any) {
+    console.error('Error deleting session:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete session' });
+  }
+});
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })

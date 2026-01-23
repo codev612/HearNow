@@ -1,32 +1,88 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
+import 'package:http/http.dart' as http;
 import '../models/meeting_session.dart';
+import '../config/app_config.dart';
 
 class MeetingStorageService {
-  static const String _sessionsDir = 'meeting_sessions';
+  String? _authToken;
+  
+  String? get authToken => _authToken;
 
-  Future<String> _getSessionsDirectory() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final sessionsDir = Directory(path.join(appDir.path, _sessionsDir));
-    if (!await sessionsDir.exists()) {
-      await sessionsDir.create(recursive: true);
+  void setAuthToken(String? token) {
+    _authToken = token;
+  }
+
+  Map<String, String> _getHeaders() {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (_authToken != null && _authToken!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $_authToken';
     }
-    return sessionsDir.path;
+    return headers;
   }
 
-  Future<String> _getSessionFilePath(String sessionId) async {
-    final dir = await _getSessionsDirectory();
-    return path.join(dir, '$sessionId.json');
+  String _getApiUrl(String path) {
+    final base = AppConfig.serverHttpBaseUrl;
+    final cleanBase = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    final cleanPath = path.startsWith('/') ? path : '/$path';
+    return '$cleanBase$cleanPath';
   }
 
-  Future<void> saveSession(MeetingSession session) async {
+  Future<MeetingSession> saveSession(MeetingSession session) async {
     try {
-      final filePath = await _getSessionFilePath(session.id);
-      final file = File(filePath);
-      final json = jsonEncode(session.toJson());
-      await file.writeAsString(json);
+      final url = _getApiUrl('/api/sessions');
+      final body = session.toJson();
+      
+      // Check if session ID is a valid MongoDB ObjectId (24 hex characters)
+      final isValidObjectId = session.id != null && 
+          RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(session.id!);
+      
+      if (isValidObjectId) {
+        // Try to update existing session
+        final response = await http.put(
+          Uri.parse('$url/${session.id}'),
+          headers: _getHeaders(),
+          body: jsonEncode(body),
+        );
+
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          // Successfully created or updated
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          return MeetingSession.fromJson(data);
+        } else if (response.statusCode == 404) {
+          // Session doesn't exist, create it
+          final createResponse = await http.post(
+            Uri.parse(url),
+            headers: _getHeaders(),
+            body: jsonEncode(body),
+          );
+
+          if (createResponse.statusCode != 201) {
+            final error = jsonDecode(createResponse.body)['error'] ?? 'Failed to create session';
+            throw Exception(error);
+          }
+          final data = jsonDecode(createResponse.body) as Map<String, dynamic>;
+          return MeetingSession.fromJson(data);
+        } else {
+          final error = jsonDecode(response.body)['error'] ?? 'Failed to save session';
+          throw Exception(error);
+        }
+      } else {
+        // Not a valid ObjectId, create new session
+        final createResponse = await http.post(
+          Uri.parse(url),
+          headers: _getHeaders(),
+          body: jsonEncode(body),
+        );
+
+        if (createResponse.statusCode != 201) {
+          final error = jsonDecode(createResponse.body)['error'] ?? 'Failed to create session';
+          throw Exception(error);
+        }
+        final data = jsonDecode(createResponse.body) as Map<String, dynamic>;
+        return MeetingSession.fromJson(data);
+      }
     } catch (e) {
       throw Exception('Failed to save session: $e');
     }
@@ -34,13 +90,22 @@ class MeetingStorageService {
 
   Future<MeetingSession?> loadSession(String sessionId) async {
     try {
-      final filePath = await _getSessionFilePath(sessionId);
-      final file = File(filePath);
-      if (!await file.exists()) {
+      final url = _getApiUrl('/api/sessions/$sessionId');
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _getHeaders(),
+      );
+
+      if (response.statusCode == 404) {
         return null;
       }
-      final json = await file.readAsString();
-      final data = jsonDecode(json) as Map<String, dynamic>;
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body)['error'] ?? 'Failed to load session';
+        throw Exception(error);
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
       return MeetingSession.fromJson(data);
     } catch (e) {
       throw Exception('Failed to load session: $e');
@@ -49,35 +114,29 @@ class MeetingStorageService {
 
   Future<List<MeetingSession>> listSessions() async {
     try {
-      final dir = Directory(await _getSessionsDirectory());
-      if (!await dir.exists()) {
-        return [];
+      if (_authToken == null || _authToken!.isEmpty) {
+        throw Exception('No token provided');
+      }
+      
+      final url = _getApiUrl('/api/sessions');
+      final response = await http.get(
+        Uri.parse(url),
+        headers: _getHeaders(),
+      );
+
+      if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please sign in again.');
       }
 
-      final files = dir.listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.json'))
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body)['error'] ?? 'Failed to list sessions';
+        throw Exception(error);
+      }
+
+      final data = jsonDecode(response.body) as List<dynamic>;
+      return data
+          .map((item) => MeetingSession.fromJson(item as Map<String, dynamic>))
           .toList();
-
-      final sessions = <MeetingSession>[];
-      for (final file in files) {
-        try {
-          final json = await file.readAsString();
-          final data = jsonDecode(json) as Map<String, dynamic>;
-          sessions.add(MeetingSession.fromJson(data));
-        } catch (e) {
-          print('Error loading session from ${file.path}: $e');
-        }
-      }
-
-      // Sort by updatedAt or createdAt descending
-      sessions.sort((a, b) {
-        final aTime = a.updatedAt ?? a.createdAt;
-        final bTime = b.updatedAt ?? b.createdAt;
-        return bTime.compareTo(aTime);
-      });
-
-      return sessions;
     } catch (e) {
       throw Exception('Failed to list sessions: $e');
     }
@@ -85,10 +144,20 @@ class MeetingStorageService {
 
   Future<void> deleteSession(String sessionId) async {
     try {
-      final filePath = await _getSessionFilePath(sessionId);
-      final file = File(filePath);
-      if (await file.exists()) {
-        await file.delete();
+      final url = _getApiUrl('/api/sessions/$sessionId');
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: _getHeaders(),
+      );
+
+      if (response.statusCode == 404) {
+        // Session doesn't exist, consider it deleted
+        return;
+      }
+
+      if (response.statusCode != 204) {
+        final error = jsonDecode(response.body)['error'] ?? 'Failed to delete session';
+        throw Exception(error);
       }
     } catch (e) {
       throw Exception('Failed to delete session: $e');

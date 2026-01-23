@@ -8,6 +8,7 @@ class MeetingSession {
   final List<TranscriptBubble> bubbles;
   final String? summary;
   final String? insights;
+  final String? questions;
   final Map<String, dynamic> metadata;
 
   MeetingSession({
@@ -18,6 +19,7 @@ class MeetingSession {
     required this.bubbles,
     this.summary,
     this.insights,
+    this.questions,
     this.metadata = const {},
   });
 
@@ -29,6 +31,7 @@ class MeetingSession {
     List<TranscriptBubble>? bubbles,
     String? summary,
     String? insights,
+    String? questions,
     Map<String, dynamic>? metadata,
   }) {
     return MeetingSession(
@@ -39,6 +42,7 @@ class MeetingSession {
       bubbles: bubbles ?? this.bubbles,
       summary: summary ?? this.summary,
       insights: insights ?? this.insights,
+      questions: questions ?? this.questions,
       metadata: metadata ?? this.metadata,
     );
   }
@@ -57,6 +61,7 @@ class MeetingSession {
           }).toList(),
       'summary': summary,
       'insights': insights,
+      'questions': questions,
       'metadata': metadata,
     };
   }
@@ -70,23 +75,36 @@ class MeetingSession {
       };
     }
 
+    // Parse dates and convert to local time if they're in UTC
+    final createdAtParsed = DateTime.parse(json['createdAt'] as String);
+    final createdAt = createdAtParsed.isUtc ? createdAtParsed.toLocal() : createdAtParsed;
+    
+    DateTime? updatedAt;
+    if (json['updatedAt'] != null) {
+      final updatedAtParsed = DateTime.parse(json['updatedAt'] as String);
+      updatedAt = updatedAtParsed.isUtc ? updatedAtParsed.toLocal() : updatedAtParsed;
+    }
+
     return MeetingSession(
       id: json['id'] as String,
       title: json['title'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'] as String)
-          : null,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
       bubbles: (json['bubbles'] as List<dynamic>)
-          .map((b) => TranscriptBubble(
-                source: sourceFromString(b['source'] as String),
-                text: b['text'] as String,
-                timestamp: DateTime.parse(b['timestamp'] as String),
-                isDraft: b['isDraft'] as bool? ?? false,
-              ))
+          .map((b) {
+            final timestampParsed = DateTime.parse(b['timestamp'] as String);
+            final timestamp = timestampParsed.isUtc ? timestampParsed.toLocal() : timestampParsed;
+            return TranscriptBubble(
+              source: sourceFromString(b['source'] as String),
+              text: b['text'] as String,
+              timestamp: timestamp,
+              isDraft: b['isDraft'] as bool? ?? false,
+            );
+          })
           .toList(),
       summary: json['summary'] as String?,
       insights: json['insights'] as String?,
+      questions: json['questions'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>? ?? {},
     );
   }
