@@ -167,43 +167,94 @@ class _AppShellState extends State<AppShell> with WindowListener {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: (i) async {
-          // If clicking Meeting tab (index 1) and no current session, start a new meeting
-          if (i == 1) {
-            final meetingProvider = context.read<MeetingProvider>();
-            if (meetingProvider.currentSession == null) {
-              // Start a new meeting like the "Start Meeting" button
-              final speechProvider = context.read<SpeechToTextProvider>();
-              await meetingProvider.clearCurrentSession();
-              speechProvider.clearTranscript();
-              await meetingProvider.createNewSession();
-            }
-          }
-          setState(() => _index = i);
+      bottomNavigationBar: Consumer<SpeechToTextProvider>(
+        builder: (context, speechProvider, child) {
+          final isRecording = speechProvider.isRecording;
+          final showAlert = isRecording && _index != 1; // Show alert when recording and not on meeting page
+          
+          return BottomNavigationBar(
+            currentIndex: _index,
+            onTap: (i) async {
+              // If clicking Meeting tab (index 1) and no current session, start a new meeting
+              if (i == 1) {
+                final meetingProvider = context.read<MeetingProvider>();
+                if (meetingProvider.currentSession == null) {
+                  // Start a new meeting like the "Start Meeting" button
+                  final speechProvider = context.read<SpeechToTextProvider>();
+                  await meetingProvider.clearCurrentSession();
+                  speechProvider.clearTranscript();
+                  await meetingProvider.createNewSession();
+                }
+              }
+              setState(() => _index = i);
+            },
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            selectedItemColor: Theme.of(context).colorScheme.primary,
+            unselectedItemColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            type: BottomNavigationBarType.fixed,
+            items: [
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.home_outlined),
+                activeIcon: Icon(Icons.home),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.record_voice_over_outlined),
+                    if (showAlert)
+                      Positioned(
+                        right: -4,
+                        top: -4,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                activeIcon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.record_voice_over),
+                    if (showAlert)
+                      Positioned(
+                        right: -4,
+                        top: -4,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.surface,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                label: 'Meeting',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.settings_outlined),
+                activeIcon: Icon(Icons.settings),
+                label: 'Settings',
+              ),
+            ],
+          );
         },
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.record_voice_over_outlined),
-            activeIcon: Icon(Icons.record_voice_over),
-            label: 'Meeting',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            activeIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
       ),
             ),
           ),

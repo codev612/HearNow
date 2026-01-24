@@ -1,4 +1,5 @@
 import 'transcript_bubble.dart';
+import 'meeting_mode.dart';
 
 class MeetingSession {
   final String id;
@@ -9,6 +10,7 @@ class MeetingSession {
   final String? summary;
   final String? insights;
   final String? questions;
+  final MeetingMode mode;
   final Map<String, dynamic> metadata;
 
   MeetingSession({
@@ -20,6 +22,7 @@ class MeetingSession {
     this.summary,
     this.insights,
     this.questions,
+    this.mode = MeetingMode.general,
     this.metadata = const {},
   });
 
@@ -32,6 +35,7 @@ class MeetingSession {
     String? summary,
     String? insights,
     String? questions,
+    MeetingMode? mode,
     Map<String, dynamic>? metadata,
   }) {
     return MeetingSession(
@@ -43,6 +47,7 @@ class MeetingSession {
       summary: summary ?? this.summary,
       insights: insights ?? this.insights,
       questions: questions ?? this.questions,
+      mode: mode ?? this.mode,
       metadata: metadata ?? this.metadata,
     );
   }
@@ -62,6 +67,7 @@ class MeetingSession {
       'summary': summary,
       'insights': insights,
       'questions': questions,
+      'mode': mode.name,
       'metadata': metadata,
     };
   }
@@ -105,6 +111,7 @@ class MeetingSession {
       summary: json['summary'] as String?,
       insights: json['insights'] as String?,
       questions: json['questions'] as String?,
+      mode: MeetingMode.fromString(json['mode'] as String?),
       metadata: json['metadata'] as Map<String, dynamic>? ?? {},
     );
   }

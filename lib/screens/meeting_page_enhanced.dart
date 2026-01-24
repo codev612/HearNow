@@ -7,10 +7,12 @@ import '../providers/speech_to_text_provider.dart';
 import '../providers/meeting_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/meeting_session.dart';
+import '../models/meeting_mode.dart';
 import '../models/transcript_bubble.dart';
 import '../services/meeting_question_service.dart';
 import '../services/ai_service.dart';
 import '../providers/shortcuts_provider.dart';
+import 'manage_mode_page.dart';
 
 class MeetingPageEnhanced extends StatefulWidget {
   const MeetingPageEnhanced({super.key});
@@ -358,6 +360,16 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     );
   }
 
+  Future<void> _showManageModeDialog(BuildContext context, MeetingProvider meetingProvider) async {
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ManageModePage(),
+      ),
+    );
+  }
+
   Future<void> _showMarkersDialog(MeetingProvider meetingProvider) async {
     if (!mounted) return;
     await showDialog<void>(
@@ -468,13 +480,28 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     });
   }
 
-  Widget _buildBubble({required TranscriptSource source, required String text}) {
+  Widget _buildBubble({
+    required TranscriptSource source,
+    required String text,
+    required DateTime timestamp,
+    DateTime? meetingStartTime,
+  }) {
     final isMe = source == TranscriptSource.mic;
     // Make bubbles more transparent - use black background with low opacity for better readability
     final backgroundColor = isMe 
         ? Colors.blue.shade600.withValues(alpha: 0.3) 
         : Colors.grey.shade800.withValues(alpha: 0.3);
     final textColor = isMe ? Colors.white : Colors.white;
+    
+    // Calculate relative time from meeting start
+    String timeDisplay;
+    if (meetingStartTime != null) {
+      final duration = timestamp.difference(meetingStartTime);
+      timeDisplay = _formatDuration(duration);
+    } else {
+      // Fallback to wall time if no meeting start time available
+      timeDisplay = _formatWallTime(timestamp);
+    }
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -500,35 +527,59 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
               ),
             ],
           ),
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 16,
-              color: textColor,
-              fontStyle: FontStyle.normal,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.9),
-                  blurRadius: 5,
-                  offset: const Offset(1, 1),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                text,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: textColor,
+                  fontStyle: FontStyle.normal,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.9),
+                      blurRadius: 5,
+                      offset: const Offset(1, 1),
+                    ),
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.9),
+                      blurRadius: 5,
+                      offset: const Offset(-1, -1),
+                    ),
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.9),
+                      blurRadius: 5,
+                      offset: const Offset(1, -1),
+                    ),
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.9),
+                      blurRadius: 5,
+                      offset: const Offset(-1, 1),
+                    ),
+                  ],
                 ),
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.9),
-                  blurRadius: 5,
-                  offset: const Offset(-1, -1),
+              ),
+              const SizedBox(height: 4),
+              Align(
+                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                child: Text(
+                  timeDisplay,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: textColor.withValues(alpha: 0.7),
+                    shadows: [
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.9),
+                        blurRadius: 3,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
                 ),
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.9),
-                  blurRadius: 5,
-                  offset: const Offset(1, -1),
-                ),
-                Shadow(
-                  color: Colors.black.withValues(alpha: 0.9),
-                  blurRadius: 5,
-                  offset: const Offset(-1, 1),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -712,7 +763,21 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
       itemCount: bubbles.length,
       itemBuilder: (context, index) {
         final b = bubbles[index];
-        return _buildBubble(source: b.source, text: b.text);
+        // Calculate meeting start time: use first bubble's timestamp, or session createdAt, or recording start time
+        DateTime? meetingStartTime;
+        if (bubbles.isNotEmpty) {
+          meetingStartTime = bubbles.first.timestamp;
+        } else if (currentSession != null) {
+          meetingStartTime = currentSession.createdAt;
+        } else if (_recordingStartedAt != null) {
+          meetingStartTime = _recordingStartedAt;
+        }
+        return _buildBubble(
+          source: b.source,
+          text: b.text,
+          timestamp: b.timestamp,
+          meetingStartTime: meetingStartTime,
+        );
       },
     );
   }
@@ -1664,6 +1729,117 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                   ),
                                 ),
                               ),
+                              const SizedBox(width: 12),
+                              // Mode selector dropdown
+                              Consumer<MeetingProvider>(
+                                builder: (context, meetingProvider, child) {
+                                  final currentMode = session?.mode ?? MeetingMode.general;
+                                  final navigatorContext = context;
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(alpha: 0.3),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: PopupMenuButton<MeetingMode?>(
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            currentMode.label,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              shadows: [
+                                                Shadow(color: Colors.black, blurRadius: 4, offset: Offset(1, 1)),
+                                              ],
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          const Icon(
+                                            Icons.arrow_drop_down,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                        ],
+                                      ),
+                                      color: Colors.grey.shade900,
+                                      itemBuilder: (BuildContext menuContext) {
+                                        final items = <PopupMenuEntry<MeetingMode?>>[];
+                                        
+                                        // Add mode items
+                                        for (final mode in MeetingMode.values) {
+                                          items.add(
+                                            PopupMenuItem<MeetingMode?>(
+                                              value: mode,
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(mode.icon, size: 18, color: Colors.white),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    mode.label,
+                                                    style: const TextStyle(color: Colors.white),
+                                                  ),
+                                                  if (mode == currentMode) ...[
+                                                    const Spacer(),
+                                                    const Icon(Icons.check, color: Colors.white, size: 18),
+                                                  ],
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        
+                                        // Add divider
+                                        items.add(const PopupMenuDivider());
+                                        
+                                        // Add manage mode item with onTap handler
+                                        items.add(
+                                          PopupMenuItem<MeetingMode?>(
+                                            enabled: false,
+                                            child: InkWell(
+                                              onTap: () {
+                                                Navigator.pop(menuContext); // Close the menu first
+                                                Navigator.push(
+                                                  navigatorContext,
+                                                  MaterialPageRoute(
+                                                    builder: (context) => const ManageModePage(),
+                                                  ),
+                                                );
+                                              },
+                                              child: const Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.settings, size: 18, color: Colors.white),
+                                                  SizedBox(width: 8),
+                                                  Text(
+                                                    'Manage mode',
+                                                    style: TextStyle(color: Colors.white),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                        
+                                        return items;
+                                      },
+                                      onSelected: (MeetingMode? selected) {
+                                        if (selected != null && meetingProvider.currentSession != null) {
+                                          // Regular mode selected
+                                          meetingProvider.updateCurrentSessionMode(selected);
+                                        }
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
                               const SizedBox(width: 8),
                               // Toggle conversation panel visibility (always visible)
                               Tooltip(
@@ -1673,7 +1849,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                   onPressed: () => setState(() => _showConversationPanel = !_showConversationPanel),
                                   visualDensity: VisualDensity.compact,
                                   iconSize: 20,
-                                  color: _showConversationPanel ? Colors.blue : Colors.grey,
+                                  color: _showConversationPanel ? Colors.deepPurple : Colors.grey,
                                 ),
                               ),
                               // Toggle AI panel visibility (always visible)
@@ -1905,10 +2081,13 @@ class _SessionsListPageState extends State<SessionsListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('Meeting Sessions'),
       ),
-      body: Consumer<MeetingProvider>(
+      body: Container(
+        color: Theme.of(context).colorScheme.surface,
+        child: Consumer<MeetingProvider>(
         builder: (context, provider, child) {
           if (provider.isLoading && provider.sessions.isEmpty) {
             return const Center(child: CircularProgressIndicator());
@@ -1991,6 +2170,7 @@ class _SessionsListPageState extends State<SessionsListPage> {
             },
           );
         },
+      ),
       ),
     );
   }

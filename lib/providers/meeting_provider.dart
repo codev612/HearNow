@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/meeting_session.dart';
+import '../models/meeting_mode.dart';
 import '../models/transcript_bubble.dart';
 import '../services/meeting_storage_service.dart';
 import '../services/ai_service.dart';
@@ -124,16 +125,37 @@ class MeetingProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> createNewSession({String? title}) async {
+  Future<void> createNewSession({String? title, MeetingMode? mode}) async {
     final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
     _currentSession = MeetingSession(
       id: sessionId,
       title: title ?? 'Meeting ${DateTime.now().toLocal().toString().substring(0, 16)}',
       createdAt: DateTime.now(),
       bubbles: [],
+      mode: mode ?? MeetingMode.general,
     );
     await _saveCurrentSessionId(sessionId);
     notifyListeners();
+  }
+
+  Future<void> updateCurrentSessionMode(MeetingMode mode) async {
+    if (_currentSession == null) return;
+    
+    _currentSession = _currentSession!.copyWith(
+      mode: mode,
+      updatedAt: DateTime.now(),
+    );
+    notifyListeners();
+    
+    // Auto-save if session has been saved before (has MongoDB ObjectId)
+    if (_currentSession!.id.length == 24) {
+      try {
+        await _storage.saveSession(_currentSession!);
+      } catch (e) {
+        // Silently fail - mode will be saved on next manual save
+        print('Failed to auto-save mode: $e');
+      }
+    }
   }
 
   Future<void> saveCurrentSession({String? title}) async {

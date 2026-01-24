@@ -242,7 +242,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-class _SidebarItem extends StatelessWidget {
+class _SidebarItem extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool isSelected;
@@ -256,45 +256,63 @@ class _SidebarItem extends StatelessWidget {
   });
 
   @override
+  State<_SidebarItem> createState() => _SidebarItemState();
+}
+
+class _SidebarItemState extends State<_SidebarItem> {
+  bool _isHovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? Theme.of(context).colorScheme.primaryContainer
-              : Colors.transparent,
-          border: isSelected
-              ? Border(
-                  right: BorderSide(
-                    color: Theme.of(context).colorScheme.primary,
-                    width: 3,
+    final theme = Theme.of(context);
+    
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: widget.isSelected
+                  ? theme.colorScheme.primaryContainer
+                  : _isHovered
+                      ? theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.8)
+                      : Colors.transparent,
+              border: widget.isSelected
+                  ? Border(
+                      right: BorderSide(
+                        color: theme.colorScheme.primary,
+                        width: 3,
+                      ),
+                    )
+                  : null,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  widget.icon,
+                  size: 20,
+                  color: widget.isSelected
+                      ? theme.colorScheme.onPrimaryContainer
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.normal,
+                    color: widget.isSelected
+                        ? theme.colorScheme.onPrimaryContainer
+                        : theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
-                )
-              : null,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              size: 20,
-              color: isSelected
-                  ? Theme.of(context).colorScheme.onPrimaryContainer
-                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected
-                    ? Theme.of(context).colorScheme.onPrimaryContainer
-                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
