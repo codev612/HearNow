@@ -44,12 +44,15 @@ class TranscriptionService {
           if (data['type'] == 'transcript') {
             final text = (data['text'] as String?) ?? '';
             if (text.trim().isEmpty) return;
+            
+            final receivedSource = (data['source'] as String?) ?? 'unknown';
+            print('[TranscriptionService] Received transcript with source: "$receivedSource", text: "${text.substring(0, text.length > 50 ? 50 : text.length)}..."');
 
             _transcriptController.add(
               TranscriptionResult(
                 text: text,
                 isFinal: data['is_final'] == true,
-                source: (data['source'] as String?) ?? 'unknown',
+                source: receivedSource,
                 confidence: data['confidence']?.toDouble() ?? 0.0,
               ),
             );
@@ -102,6 +105,7 @@ class TranscriptionService {
       };
 
       final base64Audio = base64Encode(audioBytes);
+      print('[TranscriptionService] Sending audio with source: "$source"');
       channel.sink.add(
         jsonEncode({
           'type': 'audio',

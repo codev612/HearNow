@@ -538,10 +538,13 @@ wss.on('connection', (ws: WebSocket) => {
       if (transcript) {
         const isFinal = data.is_final === true;
         const isInterim = data.is_final === false;
+        // Ensure source is correctly preserved from closure
+        const transcriptSource = source; // Use closure variable to ensure correct source
+        console.log(`[DEBUG] Sending transcript from ${transcriptSource} connection: "${transcript.substring(0, 50)}..."`);
         ws.send(
           JSON.stringify({
             type: 'transcript',
-            source,
+            source: transcriptSource,
             text: transcript,
             is_final: isFinal,
             is_interim: isInterim,
@@ -619,16 +622,52 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
       } else if (data.type === 'audio') {
-        const source = data.source === 'system' ? 'system' : 'mic';
-        const target = source === 'system' ? deepgramSystem : deepgramMic;
-        if (!target) return;
+        // Validate and normalize source - must be exactly 'system' or 'mic'
+        const receivedSource = String(data.source || '').toLowerCase().trim();
+        
+        // Strict validation - reject if source is not exactly 'system' or 'mic'
+        if (receivedSource !== 'system' && receivedSource !== 'mic') {
+          console.error(`[ERROR] Invalid source received: "${data.source}", rejecting audio`);
+          return;
+        }
+        
+        const source = receivedSource; // Use normalized source directly
+        
+        // Debug logging with explicit checks
+        if (source === 'system') {
+          console.log(`[DEBUG] Routing SYSTEM audio - deepgramSystem available: ${!!deepgramSystem}, deepgramMic available: ${!!deepgramMic}`);
+          if (!deepgramSystem) {
+            console.error(`[ERROR] System audio received but deepgramSystem is not available!`);
+            return;
+          }
+        } else if (source === 'mic') {
+          console.log(`[DEBUG] Routing MIC audio - deepgramMic available: ${!!deepgramMic}, deepgramSystem available: ${!!deepgramSystem}`);
+          if (!deepgramMic) {
+            console.error(`[ERROR] Mic audio received but deepgramMic is not available!`);
+            return;
+          }
+        }
+        
+        // Explicit routing - ensure we use the correct connection
+        let target;
+        if (source === 'system') {
+          target = deepgramSystem;
+        } else {
+          target = deepgramMic;
+        }
+        
+        if (!target) {
+          console.error(`[ERROR] No Deepgram connection available for source: ${source} (received: "${data.source}")`);
+          return;
+        }
 
         // Forward audio data to Deepgram (per-source session)
         try {
           const audioBuffer = Buffer.from(data.audio, 'base64');
+          console.log(`[DEBUG] Sending ${source} audio to ${source === 'system' ? 'deepgramSystem' : 'deepgramMic'} (${audioBuffer.length} bytes)`);
           target.send(audioBuffer);
         } catch (error: any) {
-          console.error('Error sending audio to Deepgram:', error);
+          console.error(`[ERROR] Error sending audio to Deepgram (${source}):`, error);
           ws.send(JSON.stringify({ type: 'error', message: 'Error processing audio' }));
         }
       } else if (data.type === 'stop') {

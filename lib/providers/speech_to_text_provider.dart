@@ -15,6 +15,20 @@ class SpeechToTextProvider extends ChangeNotifier {
   Timer? _mockAudioTimer;
   Timer? _systemAudioPollTimer;
   bool _isSystemAudioCapturing = false;
+  bool _useMic = true;
+  
+  // Track when last system final transcript was received to suppress mic echo
+  DateTime? _lastSystemFinalTime;
+  // Increased window for gaming headphones (echo can be delayed)
+  static const _micSuppressionWindow = Duration(milliseconds: 3000);
+  
+  // Track when last mic final transcript was received to suppress system audio echo
+  DateTime? _lastMicFinalTime;
+  static const _systemSuppressionWindow = Duration(milliseconds: 1500);
+  
+  // Track recent system transcripts to detect if system audio is actively playing
+  final List<DateTime> _recentSystemTranscripts = [];
+  static const _systemActivityWindow = Duration(seconds: 10);
   
   bool _isRecording = false;
   bool _isConnected = false;
@@ -28,6 +42,7 @@ class SpeechToTextProvider extends ChangeNotifier {
 
   bool get isRecording => _isRecording;
   bool get isConnected => _isConnected;
+  bool get useMic => _useMic;
   List<TranscriptBubble> get bubbles => List.unmodifiable(_bubbles);
   String get errorMessage => _errorMessage;
 
@@ -69,9 +84,103 @@ class SpeechToTextProvider extends ChangeNotifier {
     return existingTrimmed + (needsSpace ? ' ' : '') + toAppend;
   }
 
+  /// Calculate similarity between two texts (0.0 to 1.0)
+  double _calculateSimilarity(String text1, String text2) {
+    final norm1 = text1.toLowerCase().trim();
+    final norm2 = text2.toLowerCase().trim();
+    
+    // Exact match
+    if (norm1 == norm2) return 1.0;
+    
+    // Check word overlap
+    final words1 = norm1.split(RegExp(r'\s+')).where((w) => w.length > 2).toSet();
+    final words2 = norm2.split(RegExp(r'\s+')).where((w) => w.length > 2).toSet();
+    
+    if (words1.isEmpty || words2.isEmpty) return 0.0;
+    
+    final intersection = words1.intersection(words2).length;
+    final union = words1.union(words2).length;
+    
+    // Jaccard similarity (intersection over union)
+    return union > 0 ? intersection / union : 0.0;
+  }
+  
+  /// Check if system audio is actively playing (has recent transcripts)
+  bool _isSystemAudioActive() {
+    if (_recentSystemTranscripts.isEmpty) return false;
+    final now = DateTime.now();
+    // Check if there's a system transcript in the last 3 seconds
+    return _recentSystemTranscripts.any((time) => now.difference(time) < const Duration(seconds: 3));
+  }
+  
+  /// Check if text is similar to any recent transcript from the other source
+  bool _isSimilarToRecentTranscript(String text, TranscriptSource source, {int checkLast = 15}) {
+    final otherSource = source == TranscriptSource.mic ? TranscriptSource.system : TranscriptSource.mic;
+    final now = DateTime.now();
+    final checkWindow = const Duration(seconds: 8); // Increased window for gaming headphones
+    
+    // Check recent bubbles from the other source
+    final searchLimit = _bubbles.length > checkLast ? _bubbles.length - checkLast : 0;
+    for (int i = _bubbles.length - 1; i >= searchLimit; i--) {
+      final bubble = _bubbles[i];
+      
+      // Only check final bubbles from the other source within time window
+      if (bubble.source != otherSource || bubble.isDraft) continue;
+      if (now.difference(bubble.timestamp) > checkWindow) break;
+      
+      final similarity = _calculateSimilarity(text, bubble.text);
+      // Lower threshold for mic (more aggressive) - 60% instead of 70%
+      final threshold = source == TranscriptSource.mic ? 0.6 : 0.7;
+      if (similarity > threshold) {
+        print('[SpeechToTextProvider] Found similar transcript: "$text" (similarity: ${(similarity * 100).toStringAsFixed(1)}%) matches "${bubble.text}"');
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   void _upsertFinalBubble({required TranscriptSource source, required String text}) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
+    
+    // Layer 2: Text similarity check (backup to time-based suppression)
+    // More aggressive for mic source - if mic transcript matches system, always ignore it
+    if (source == TranscriptSource.mic) {
+      // Check against both final and draft system transcripts
+      final otherSource = TranscriptSource.system;
+      final now = DateTime.now();
+      final checkWindow = const Duration(seconds: 8);
+      final searchLimit = _bubbles.length > 15 ? _bubbles.length - 15 : 0;
+      
+      for (int i = _bubbles.length - 1; i >= searchLimit; i--) {
+        final bubble = _bubbles[i];
+        if (bubble.source != otherSource) continue;
+        if (now.difference(bubble.timestamp) > checkWindow) break;
+        
+        final similarity = _calculateSimilarity(trimmed, bubble.text);
+        // Lower threshold for mic (60%) - more aggressive duplicate detection
+        if (similarity > 0.6) {
+          print('[SpeechToTextProvider] Ignoring mic transcript (${(similarity * 100).toStringAsFixed(1)}% similar to system "${bubble.text}"): "$trimmed"');
+          return; // Always ignore mic if it matches system
+        }
+      }
+    }
+    
+    // Check if this transcript is similar to a recent transcript from the other source
+    if (_isSimilarToRecentTranscript(trimmed, source)) {
+      // If system comes after mic, find and remove the mic version
+      final searchLimit = _bubbles.length > 15 ? _bubbles.length - 15 : 0;
+      for (int i = _bubbles.length - 1; i >= searchLimit; i--) {
+        if (_bubbles[i].source == TranscriptSource.mic && 
+            !_bubbles[i].isDraft &&
+            _calculateSimilarity(_bubbles[i].text, trimmed) > 0.6) {
+          _bubbles.removeAt(i);
+          print('[SpeechToTextProvider] Replacing mic transcript with system version: "$trimmed"');
+          break;
+        }
+      }
+    }
 
     // If the last bubble is from the same source, merge into it to reduce fragmentation.
     if (_bubbles.isNotEmpty && _bubbles.last.source == source) {
@@ -143,11 +252,29 @@ class SpeechToTextProvider extends ChangeNotifier {
     
     _transcriptionService!.transcriptStream.listen(
       (result) {
+        print('[SpeechToTextProvider] Received transcript - raw source: "${result.source}", text: "${result.text.substring(0, result.text.length > 50 ? 50 : result.text.length)}..."');
         final source = switch (result.source) {
           'mic' => TranscriptSource.mic,
           'system' => TranscriptSource.system,
           _ => TranscriptSource.unknown,
         };
+        print('[SpeechToTextProvider] Mapped to TranscriptSource: $source');
+
+        // Track when system final transcript is received to suppress mic echo
+        if (result.isFinal && source == TranscriptSource.system) {
+          final now = DateTime.now();
+          _lastSystemFinalTime = now;
+          _recentSystemTranscripts.add(now);
+          // Clean up old entries
+          _recentSystemTranscripts.removeWhere((time) => now.difference(time) > _systemActivityWindow);
+          print('[SpeechToTextProvider] System final transcript received, suppressing mic audio for ${_micSuppressionWindow.inMilliseconds}ms');
+        }
+        
+        // Track when mic final transcript is received to suppress system audio echo
+        if (result.isFinal && source == TranscriptSource.mic) {
+          _lastMicFinalTime = DateTime.now();
+          print('[SpeechToTextProvider] Mic final transcript received, suppressing system audio for ${_systemSuppressionWindow.inMilliseconds}ms');
+        }
 
         if (result.isFinal) {
           _upsertFinalBubble(source: source, text: result.text);
@@ -252,12 +379,18 @@ class SpeechToTextProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> startRecording({bool clearExisting = false}) async {
+  Future<void> startRecording({bool clearExisting = false, bool useMic = true}) async {
     try {
-      print('[SpeechToTextProvider] Starting recording...');
+      print('[SpeechToTextProvider] Starting recording... (useMic: $useMic)');
       _errorMessage = '';
       _audioFrameCount = 0;
       _isSystemAudioCapturing = false;
+      _useMic = useMic;
+      
+      // Reset suppression timestamps when starting recording
+      _lastSystemFinalTime = null;
+      _lastMicFinalTime = null;
+      _recentSystemTranscripts.clear();
       
       // Only clear bubbles if explicitly requested (for new sessions)
       // When resuming, preserve existing bubbles
@@ -265,15 +398,6 @@ class SpeechToTextProvider extends ChangeNotifier {
         _bubbles.clear();
       }
       
-      // Request permissions
-      final hasPermission = await requestPermissions();
-      if (!hasPermission) {
-        _errorMessage = 'Microphone permission denied';
-        print('[SpeechToTextProvider] Microphone permission denied');
-        notifyListeners();
-        return;
-      }
-
       print('[SpeechToTextProvider] Permission granted, connecting to transcription service...');
       // Connect to WebSocket
       await _transcriptionService?.connect();
@@ -288,6 +412,20 @@ class SpeechToTextProvider extends ChangeNotifier {
           _systemAudioPollTimer = Timer.periodic(
             const Duration(milliseconds: 50),
             (_) {
+              // Suppress system audio if mic just finalized a transcript (prevent echo)
+              if (_lastMicFinalTime != null) {
+                final now = DateTime.now();
+                final timeSinceMicFinal = now.difference(_lastMicFinalTime!);
+                if (timeSinceMicFinal < _systemSuppressionWindow) {
+                  // Skip sending system audio - it's likely echo from mic audio
+                  return;
+                }
+                // Clear suppression timestamp if window has passed
+                if (timeSinceMicFinal >= _systemSuppressionWindow) {
+                  _lastMicFinalTime = null;
+                }
+              }
+              
               // Pull ~50ms at 16kHz mono PCM16 => 16000*0.05*2 = 1600 bytes
               WindowsAudioService.getSystemAudioFrame(lengthBytes: 1600).then((frame) {
                 if (frame.isEmpty) return;
@@ -300,41 +438,93 @@ class SpeechToTextProvider extends ChangeNotifier {
         }
       }
 
-      // Initialize audio capture
-      _audioCaptureService = AudioCaptureService(
-        onAudioData: (audioData) {
-          _audioFrameCount++;
-          if (_audioFrameCount % 10 == 0) {
-            print('[SpeechToTextProvider] Audio frame #$_audioFrameCount: ${audioData.length} bytes');
-          }
-          _transcriptionService?.sendAudio(audioData, source: 'mic');
-        },
-      );
+      // Only start microphone capture if useMic is true
+      if (_useMic) {
+        // Request permissions
+        final hasPermission = await requestPermissions();
+        if (!hasPermission) {
+          _errorMessage = 'Microphone permission denied';
+          print('[SpeechToTextProvider] Microphone permission denied');
+          notifyListeners();
+          return;
+        }
 
-      // Request microphone permission and start capturing
-      final canCapture = await _audioCaptureService!.requestPermissions();
-      if (!canCapture) {
-        _errorMessage = 'Microphone permission denied';
-        _isConnected = false;
-        _transcriptionService?.disconnect();
-        notifyListeners();
-        return;
-      }
+        // Initialize audio capture
+        _audioCaptureService = AudioCaptureService(
+          onAudioData: (audioData) {
+            // Only send mic audio if useMic is still true
+            if (!_useMic) return;
+            
+            final now = DateTime.now();
+            
+            // Aggressive suppression: Suppress mic audio if system audio is active
+            // This is especially important for gaming headphones where echo is delayed
+            if (_isSystemAudioActive()) {
+              // If system audio is actively playing, suppress mic more aggressively
+              if (_lastSystemFinalTime != null) {
+                final timeSinceSystemFinal = now.difference(_lastSystemFinalTime!);
+                if (timeSinceSystemFinal < _micSuppressionWindow) {
+                  // Skip sending mic audio - it's likely echo from system audio
+                  if (_audioFrameCount % 100 == 0) {
+                    print('[SpeechToTextProvider] Suppressing mic audio (system active, ${timeSinceSystemFinal.inMilliseconds}ms since system final)');
+                  }
+                  return;
+                }
+              }
+            }
+            
+            // Standard suppression: Suppress mic audio if system just finalized a transcript
+            if (_lastSystemFinalTime != null) {
+              final timeSinceSystemFinal = now.difference(_lastSystemFinalTime!);
+              if (timeSinceSystemFinal < _micSuppressionWindow) {
+                // Skip sending mic audio - it's likely echo from system audio
+                if (_audioFrameCount % 100 == 0) {
+                  print('[SpeechToTextProvider] Suppressing mic audio (${timeSinceSystemFinal.inMilliseconds}ms since system final)');
+                }
+                return;
+              }
+              // Clear suppression timestamp if window has passed
+              if (timeSinceSystemFinal >= _micSuppressionWindow) {
+                _lastSystemFinalTime = null;
+              }
+            }
+            
+            _audioFrameCount++;
+            if (_audioFrameCount % 10 == 0) {
+              print('[SpeechToTextProvider] Audio frame #$_audioFrameCount: ${audioData.length} bytes');
+            }
+            _transcriptionService?.sendAudio(audioData, source: 'mic');
+          },
+        );
 
-      // Start audio capturing
-      try {
-        await _audioCaptureService!.startCapturing();
-      } catch (e) {
-        _errorMessage = 'Failed to start audio capture: $e';
-        _isConnected = false;
-        _transcriptionService?.disconnect();
-        notifyListeners();
-        return;
+        // Request microphone permission and start capturing
+        final canCapture = await _audioCaptureService!.requestPermissions();
+        if (!canCapture) {
+          _errorMessage = 'Microphone permission denied';
+          _isConnected = false;
+          _transcriptionService?.disconnect();
+          notifyListeners();
+          return;
+        }
+
+        // Start audio capturing
+        try {
+          await _audioCaptureService!.startCapturing();
+        } catch (e) {
+          _errorMessage = 'Failed to start audio capture: $e';
+          _isConnected = false;
+          _transcriptionService?.disconnect();
+          notifyListeners();
+          return;
+        }
+      } else {
+        print('[SpeechToTextProvider] Microphone capture disabled');
+        _audioCaptureService = null;
       }
 
       _isRecording = true;
       notifyListeners();
-      print('[SpeechToTextProvider] Recording started with real audio capture');
+      print('[SpeechToTextProvider] Recording started${_useMic ? ' with microphone' : ' without microphone'}');
     } catch (e) {
       _errorMessage = 'Failed to start recording: $e';
       print('[SpeechToTextProvider] Error: $e');
@@ -342,6 +532,96 @@ class SpeechToTextProvider extends ChangeNotifier {
       _isConnected = false;
       notifyListeners();
     }
+  }
+
+  Future<void> setUseMic(bool useMic) async {
+    if (_useMic == useMic) return;
+    
+    _useMic = useMic;
+    
+    if (_isRecording) {
+      if (useMic) {
+        // Enable mic: request permissions and start capturing
+        final hasPermission = await requestPermissions();
+        if (!hasPermission) {
+          _errorMessage = 'Microphone permission denied';
+          _useMic = false;
+          notifyListeners();
+          return;
+        }
+        
+        _audioCaptureService = AudioCaptureService(
+          onAudioData: (audioData) {
+            if (!_useMic) return;
+            
+            final now = DateTime.now();
+            
+            // Aggressive suppression: Suppress mic audio if system audio is active
+            if (_isSystemAudioActive()) {
+              if (_lastSystemFinalTime != null) {
+                final timeSinceSystemFinal = now.difference(_lastSystemFinalTime!);
+                if (timeSinceSystemFinal < _micSuppressionWindow) {
+                  if (_audioFrameCount % 100 == 0) {
+                    print('[SpeechToTextProvider] Suppressing mic audio (system active, ${timeSinceSystemFinal.inMilliseconds}ms since system final)');
+                  }
+                  return;
+                }
+              }
+            }
+            
+            // Standard suppression: Suppress mic audio if system just finalized a transcript
+            if (_lastSystemFinalTime != null) {
+              final timeSinceSystemFinal = now.difference(_lastSystemFinalTime!);
+              if (timeSinceSystemFinal < _micSuppressionWindow) {
+                if (_audioFrameCount % 100 == 0) {
+                  print('[SpeechToTextProvider] Suppressing mic audio (${timeSinceSystemFinal.inMilliseconds}ms since system final)');
+                }
+                return;
+              }
+              if (timeSinceSystemFinal >= _micSuppressionWindow) {
+                _lastSystemFinalTime = null;
+              }
+            }
+            
+            _audioFrameCount++;
+            if (_audioFrameCount % 10 == 0) {
+              print('[SpeechToTextProvider] Audio frame #$_audioFrameCount: ${audioData.length} bytes');
+            }
+            _transcriptionService?.sendAudio(audioData, source: 'mic');
+          },
+        );
+        
+        final canCapture = await _audioCaptureService!.requestPermissions();
+        if (!canCapture) {
+          _errorMessage = 'Microphone permission denied';
+          _useMic = false;
+          _audioCaptureService?.dispose();
+          _audioCaptureService = null;
+          notifyListeners();
+          return;
+        }
+        
+        try {
+          await _audioCaptureService!.startCapturing();
+          print('[SpeechToTextProvider] Microphone enabled');
+        } catch (e) {
+          _errorMessage = 'Failed to start audio capture: $e';
+          _useMic = false;
+          _audioCaptureService?.dispose();
+          _audioCaptureService = null;
+          notifyListeners();
+          return;
+        }
+      } else {
+        // Disable mic: stop capturing
+        await _audioCaptureService?.stopCapturing();
+        _audioCaptureService?.dispose();
+        _audioCaptureService = null;
+        print('[SpeechToTextProvider] Microphone disabled');
+      }
+    }
+    
+    notifyListeners();
   }
 
   Future<void> stopRecording() async {
@@ -356,6 +636,11 @@ class SpeechToTextProvider extends ChangeNotifier {
         await WindowsAudioService.stopSystemAudioCapture();
       }
       _isSystemAudioCapturing = false;
+      
+      // Reset suppression timestamps
+      _lastSystemFinalTime = null;
+      _lastMicFinalTime = null;
+      _recentSystemTranscripts.clear();
       
       // Stop audio capture
       await _audioCaptureService?.stopCapturing();

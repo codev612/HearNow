@@ -904,7 +904,14 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
               // Use mic checkbox
               Checkbox(
                 value: _useMic,
-                onChanged: (value) => setState(() => _useMic = value ?? true),
+                onChanged: (value) {
+                  final newValue = value ?? true;
+                  setState(() => _useMic = newValue);
+                  // If recording is active, toggle mic in the provider
+                  if (_speechProvider?.isRecording == true) {
+                    _speechProvider?.setUseMic(newValue);
+                  }
+                },
                 visualDensity: VisualDensity.compact,
               ),
               Text('Use mic', style: TextStyle(
@@ -1040,7 +1047,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                 onPressed: () {
                                   // Don't clear bubbles when resuming a saved session
                                   final shouldClear = !isSavedSession && !hasExistingBubbles;
-                                  speechProvider.startRecording(clearExisting: shouldClear);
+                                  speechProvider.startRecording(clearExisting: shouldClear, useMic: _useMic);
                                 },
                                 tooltip: (isSavedSession || hasExistingBubbles) ? 'Resume (Ctrl+R)' : 'Start (Ctrl+R)',
                                 icon: Icon((isSavedSession || hasExistingBubbles) ? Icons.play_arrow : Icons.play_arrow),
@@ -1739,7 +1746,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                     final isSavedSession = currentSession != null && currentSession.bubbles.isNotEmpty;
                     final hasExistingBubbles = speechProvider.bubbles.isNotEmpty;
                     final shouldClear = !isSavedSession && !hasExistingBubbles;
-                    speechProvider.startRecording(clearExisting: shouldClear);
+                    speechProvider.startRecording(clearExisting: shouldClear, useMic: _useMic);
                   }
                   return null;
                 },
