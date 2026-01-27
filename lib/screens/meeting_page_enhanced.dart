@@ -533,81 +533,86 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: backgroundColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isMe 
-                  ? Colors.blue.shade400.withValues(alpha: 0.5) 
-                  : Colors.grey.shade400.withValues(alpha: 0.5),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
+      child: IntrinsicWidth(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: 80,
+            maxWidth: 520,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                text,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: textColor,
-                  fontStyle: FontStyle.normal,
-                  shadows: [
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.9),
-                      blurRadius: 5,
-                      offset: const Offset(1, 1),
-                    ),
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.9),
-                      blurRadius: 5,
-                      offset: const Offset(-1, -1),
-                    ),
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.9),
-                      blurRadius: 5,
-                      offset: const Offset(1, -1),
-                    ),
-                    Shadow(
-                      color: Colors.black.withValues(alpha: 0.9),
-                      blurRadius: 5,
-                      offset: const Offset(-1, 1),
-                    ),
-                  ],
-                ),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isMe 
+                    ? Colors.blue.shade400.withValues(alpha: 0.5) 
+                    : Colors.grey.shade400.withValues(alpha: 0.5),
+                width: 1,
               ),
-              const SizedBox(height: 4),
-              Align(
-                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                child: Text(
-                  timeDisplay,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  text,
                   style: TextStyle(
-                    fontSize: 11,
-                    color: textColor.withValues(alpha: 0.7),
+                    fontSize: 16,
+                    color: textColor,
+                    fontStyle: FontStyle.normal,
                     shadows: [
                       Shadow(
                         color: Colors.black.withValues(alpha: 0.9),
-                        blurRadius: 3,
-                        offset: const Offset(0, 1),
+                        blurRadius: 5,
+                        offset: const Offset(1, 1),
+                      ),
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.9),
+                        blurRadius: 5,
+                        offset: const Offset(-1, -1),
+                      ),
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.9),
+                        blurRadius: 5,
+                        offset: const Offset(1, -1),
+                      ),
+                      Shadow(
+                        color: Colors.black.withValues(alpha: 0.9),
+                        blurRadius: 5,
+                        offset: const Offset(-1, 1),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Align(
+                  alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Text(
+                    timeDisplay,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: textColor.withValues(alpha: 0.7),
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withValues(alpha: 0.9),
+                          blurRadius: 3,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

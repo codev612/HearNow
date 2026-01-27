@@ -22,13 +22,13 @@ class SpeechToTextProvider extends ChangeNotifier {
   // Increased window for gaming headphones (echo can be delayed)
   static const _micSuppressionWindow = Duration(milliseconds: 3000);
   
-  // Track when last mic final transcript was received to suppress system audio echo
-  DateTime? _lastMicFinalTime;
-  static const _systemSuppressionWindow = Duration(milliseconds: 1500);
-  
   // Track recent system transcripts to detect if system audio is actively playing
   final List<DateTime> _recentSystemTranscripts = [];
   static const _systemActivityWindow = Duration(seconds: 10);
+  
+  // Track when recording started to suppress mic initially (prevent early duplicates)
+  DateTime? _recordingStartTime;
+  static const _initialSuppressionWindow = Duration(seconds: 8); // Suppress mic for first 8 seconds when system audio is active
   
   bool _isRecording = false;
   bool _isConnected = false;
@@ -270,11 +270,6 @@ class SpeechToTextProvider extends ChangeNotifier {
           print('[SpeechToTextProvider] System final transcript received, suppressing mic audio for ${_micSuppressionWindow.inMilliseconds}ms');
         }
         
-        // Track when mic final transcript is received to suppress system audio echo
-        if (result.isFinal && source == TranscriptSource.mic) {
-          _lastMicFinalTime = DateTime.now();
-          print('[SpeechToTextProvider] Mic final transcript received, suppressing system audio for ${_systemSuppressionWindow.inMilliseconds}ms');
-        }
 
         if (result.isFinal) {
           _upsertFinalBubble(source: source, text: result.text);
@@ -389,8 +384,12 @@ class SpeechToTextProvider extends ChangeNotifier {
       
       // Reset suppression timestamps when starting recording
       _lastSystemFinalTime = null;
-      _lastMicFinalTime = null;
       _recentSystemTranscripts.clear();
+      
+      // Set recording start time IMMEDIATELY at the start
+      // This ensures initial suppression is active before any audio capture begins
+      _recordingStartTime = DateTime.now();
+      print('[SpeechToTextProvider] Recording start time set, initial suppression will be active for ${_initialSuppressionWindow.inSeconds}s if system audio is active');
       
       // Only clear bubbles if explicitly requested (for new sessions)
       // When resuming, preserve existing bubbles
@@ -407,24 +406,20 @@ class SpeechToTextProvider extends ChangeNotifier {
       if (!kIsWeb && Platform.isWindows) {
         final started = await WindowsAudioService.startSystemAudioCapture();
         _isSystemAudioCapturing = started;
+        
+        if (started) {
+          print('[SpeechToTextProvider] System audio capture started, initial mic suppression active');
+        }
+        
         if (started) {
           _systemAudioPollTimer?.cancel();
           _systemAudioPollTimer = Timer.periodic(
             const Duration(milliseconds: 50),
             (_) {
-              // Suppress system audio if mic just finalized a transcript (prevent echo)
-              if (_lastMicFinalTime != null) {
-                final now = DateTime.now();
-                final timeSinceMicFinal = now.difference(_lastMicFinalTime!);
-                if (timeSinceMicFinal < _systemSuppressionWindow) {
-                  // Skip sending system audio - it's likely echo from mic audio
-                  return;
-                }
-                // Clear suppression timestamp if window has passed
-                if (timeSinceMicFinal >= _systemSuppressionWindow) {
-                  _lastMicFinalTime = null;
-                }
-              }
+              // Note: We don't suppress system audio when mic finalizes because:
+              // 1. System audio is typically the original source (video calls, apps, etc.)
+              // 2. Suppressing system audio causes delays in transcription
+              // 3. Mic echo suppression is handled by suppressing mic audio instead
               
               // Pull ~50ms at 16kHz mono PCM16 => 16000*0.05*2 = 1600 bytes
               WindowsAudioService.getSystemAudioFrame(lengthBytes: 1600).then((frame) {
@@ -456,6 +451,34 @@ class SpeechToTextProvider extends ChangeNotifier {
             if (!_useMic) return;
             
             final now = DateTime.now();
+            
+            // Early meeting suppression: If system audio capture is active and recording just started,
+            // suppress mic for initial period to prevent early duplicates
+            if (_recordingStartTime != null && _isSystemAudioCapturing) {
+              final timeSinceStart = now.difference(_recordingStartTime!);
+              if (timeSinceStart < _initialSuppressionWindow) {
+                if (_audioFrameCount % 50 == 0) {
+                  print('[SpeechToTextProvider] Suppressing mic audio (early meeting, ${timeSinceStart.inMilliseconds}ms/${_initialSuppressionWindow.inMilliseconds}ms since start, system audio active)');
+                }
+                return;
+              }
+            }
+            
+            // Also suppress if we have any system transcripts but no mic transcripts yet
+            // This handles the case where system audio starts before mic
+            if (_bubbles.isNotEmpty && _recordingStartTime != null) {
+              final hasSystemTranscripts = _bubbles.any((b) => b.source == TranscriptSource.system);
+              final hasMicTranscripts = _bubbles.any((b) => b.source == TranscriptSource.mic);
+              final timeSinceStart = now.difference(_recordingStartTime!);
+              
+              // If system has transcripts but mic doesn't, and we're in early period, suppress mic
+              if (hasSystemTranscripts && !hasMicTranscripts && timeSinceStart < _initialSuppressionWindow) {
+                if (_audioFrameCount % 50 == 0) {
+                  print('[SpeechToTextProvider] Suppressing mic audio (system has transcripts, mic does not, early period)');
+                }
+                return;
+              }
+            }
             
             // Aggressive suppression: Suppress mic audio if system audio is active
             // This is especially important for gaming headphones where echo is delayed
@@ -556,6 +579,34 @@ class SpeechToTextProvider extends ChangeNotifier {
             
             final now = DateTime.now();
             
+            // Early meeting suppression: If system audio capture is active and recording just started,
+            // suppress mic for initial period to prevent early duplicates
+            if (_recordingStartTime != null && _isSystemAudioCapturing) {
+              final timeSinceStart = now.difference(_recordingStartTime!);
+              if (timeSinceStart < _initialSuppressionWindow) {
+                if (_audioFrameCount % 50 == 0) {
+                  print('[SpeechToTextProvider] Suppressing mic audio (early meeting, ${timeSinceStart.inMilliseconds}ms/${_initialSuppressionWindow.inMilliseconds}ms since start, system audio active)');
+                }
+                return;
+              }
+            }
+            
+            // Also suppress if we have any system transcripts but no mic transcripts yet
+            // This handles the case where system audio starts before mic
+            if (_bubbles.isNotEmpty && _recordingStartTime != null) {
+              final hasSystemTranscripts = _bubbles.any((b) => b.source == TranscriptSource.system);
+              final hasMicTranscripts = _bubbles.any((b) => b.source == TranscriptSource.mic);
+              final timeSinceStart = now.difference(_recordingStartTime!);
+              
+              // If system has transcripts but mic doesn't, and we're in early period, suppress mic
+              if (hasSystemTranscripts && !hasMicTranscripts && timeSinceStart < _initialSuppressionWindow) {
+                if (_audioFrameCount % 50 == 0) {
+                  print('[SpeechToTextProvider] Suppressing mic audio (system has transcripts, mic does not, early period)');
+                }
+                return;
+              }
+            }
+            
             // Aggressive suppression: Suppress mic audio if system audio is active
             if (_isSystemAudioActive()) {
               if (_lastSystemFinalTime != null) {
@@ -639,8 +690,8 @@ class SpeechToTextProvider extends ChangeNotifier {
       
       // Reset suppression timestamps
       _lastSystemFinalTime = null;
-      _lastMicFinalTime = null;
       _recentSystemTranscripts.clear();
+      _recordingStartTime = null;
       
       // Stop audio capture
       await _audioCaptureService?.stopCapturing();
