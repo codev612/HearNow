@@ -46,10 +46,19 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   bool _isUpdatingBubbles = false; // Flag to prevent infinite loops
   MeetingModeService? _modeService;
   Future<List<ModeDisplay>>? _modeDisplaysFuture;
+  VoidCallback? _modesVersionListener;
 
   @override
   void initState() {
     super.initState();
+    _modesVersionListener = () {
+      if (mounted && _modeService != null) {
+        setState(() {
+          _modeDisplaysFuture = _modeService!.getCustomOnlyModeDisplays();
+        });
+      }
+    };
+    MeetingModeService.customModesVersion.addListener(_modesVersionListener!);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authProvider = context.read<AuthProvider>();
       _speechProvider = context.read<SpeechToTextProvider>();
@@ -107,6 +116,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   void _syncBubblesToSession() {
     // Prevent infinite loop - don't sync if we're already updating bubbles
     if (_isUpdatingBubbles) return;
+    if (!mounted) return;
     if (_meetingProvider?.currentSession == null || _speechProvider == null) return;
     
     // Only update if bubbles actually changed
@@ -115,37 +125,48 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     if (currentBubbles.length != sessionBubbles.length ||
         (currentBubbles.isNotEmpty && sessionBubbles.isNotEmpty && 
          currentBubbles.first.text != sessionBubbles.first.text)) {
-      _meetingProvider!.updateCurrentSessionBubbles(currentBubbles);
+      if (mounted) {
+        _meetingProvider!.updateCurrentSessionBubbles(currentBubbles);
+      }
     }
   }
 
   void _onSessionChanged() {
     // Prevent infinite loop - don't process if we're already updating bubbles
     if (_isUpdatingBubbles) return;
+    if (!mounted) return;
     
     // When session changes (e.g., loaded from home page), restore or clear bubbles
     final currentSession = _meetingProvider?.currentSession;
     if (currentSession != null && _speechProvider != null) {
       _isUpdatingBubbles = true;
       try {
+        if (!mounted) return;
         // Don't restore if it's a new session (timestamp ID) - only restore saved sessions
         final isNewSession = _meetingProvider?.hasNewSession ?? false;
         if (isNewSession) {
           // It's a new session, clear bubbles
-          _speechProvider!.clearTranscript();
+          if (mounted && _speechProvider != null) {
+            _speechProvider!.clearTranscript();
+          }
           return;
         }
         
+        if (!mounted) return;
         // It's a saved session
         if (currentSession.bubbles.isNotEmpty) {
           // Session has bubbles - restore them if speech provider bubbles are empty or different
           if (_speechProvider!.bubbles.isEmpty || 
               _speechProvider!.bubbles.length != currentSession.bubbles.length) {
-            _speechProvider!.restoreBubbles(currentSession.bubbles);
+            if (mounted && _speechProvider != null) {
+              _speechProvider!.restoreBubbles(currentSession.bubbles);
+            }
           }
         } else {
           // Session has no bubbles - clear any existing bubbles
-          _speechProvider!.clearTranscript();
+          if (mounted && _speechProvider != null) {
+            _speechProvider!.clearTranscript();
+          }
         }
       } finally {
         _isUpdatingBubbles = false;
@@ -155,6 +176,10 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
 
   @override
   void dispose() {
+    final listener = _modesVersionListener;
+    if (listener != null) {
+      MeetingModeService.customModesVersion.removeListener(listener);
+    }
     _recordingTimer?.cancel();
     _transcriptScrollController.dispose();
     _askAiController.dispose();
@@ -664,48 +689,60 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   }
 
   Future<void> _saveSession() async {
-    final meetingProvider = context.read<MeetingProvider>();
-    final currentSession = meetingProvider.currentSession;
-    final currentTitle = currentSession?.title ?? '';
-    
-    final titleController = TextEditingController(text: currentTitle);
-    
-    final title = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save Session'),
-        content: TextField(
-          controller: titleController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Session Name',
-            hintText: 'Enter session name',
-            border: OutlineInputBorder(),
+    if (!mounted) return;
+    try {
+      final meetingProvider = context.read<MeetingProvider>();
+      final currentSession = meetingProvider.currentSession;
+      final currentTitle = currentSession?.title ?? '';
+      
+      final titleController = TextEditingController(text: currentTitle);
+      
+      final title = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Save Session'),
+          content: TextField(
+            controller: titleController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: 'Session Name',
+              hintText: 'Enter session name',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
           ),
-          onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(titleController.text.trim()),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(titleController.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    
-    if (title == null) return; // User cancelled
-    
-    await meetingProvider.saveCurrentSession(
-      title: title.isNotEmpty ? title : null,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Session saved')),
       );
+      
+      if (title == null) return; // User cancelled
+      if (!mounted) return;
+      
+      await meetingProvider.saveCurrentSession(
+        title: title.isNotEmpty ? title : null,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Session saved')),
+        );
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Error saving session: $e');
+      debugPrint('Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving session: $e')),
+        );
+      }
     }
   }
 
@@ -807,7 +844,23 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
       iconSize: 22,
       foregroundColor: Theme.of(context).colorScheme.onSurface,
       side: BorderSide(
-        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.8),
+        width: 1.5,
+      ),
+    );
+    final templatesButtonStyle = IconButton.styleFrom(
+      minimumSize: const Size(dockButtonSize, dockButtonSize),
+      maximumSize: const Size(dockButtonSize, dockButtonSize),
+      padding: EdgeInsets.zero,
+      iconSize: 22,
+      foregroundColor: Theme.of(context).brightness == Brightness.light 
+          ? Colors.white 
+          : Theme.of(context).colorScheme.onSurface,
+      side: BorderSide(
+        color: Theme.of(context).brightness == Brightness.light
+            ? Colors.white.withValues(alpha: 0.8)
+            : Theme.of(context).colorScheme.outline.withValues(alpha: 0.8),
+        width: 1.5,
       ),
     );
 
@@ -953,17 +1006,20 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                           children: [
                             if (isRec)
                               IconButton.outlined(
-                                onPressed: () async {
-                                  await speechProvider.stopRecording();
-                                  // Save session when stopping recording
-                                  if (_meetingProvider?.currentSession != null) {
+                                onPressed: () {
+                                  if (!mounted) return;
+                                  // Use unawaited to prevent blocking and potential context issues
+                                  () async {
                                     try {
-                                      await _meetingProvider!.saveCurrentSession();
-                                    } catch (e) {
-                                      // Silently fail - session is auto-saved anyway
-                                      print('Failed to save session on stop: $e');
+                                      await speechProvider.stopRecording();
+                                      // Don't save automatically - let user save manually to avoid crashes
+                                      // Session is auto-saved periodically anyway
+                                    } catch (e, stackTrace) {
+                                      debugPrint('Error stopping recording: $e');
+                                      debugPrint('Stack trace: $stackTrace');
+                                      // Don't show SnackBar here to avoid context access issues
                                     }
-                                  }
+                                  }();
                                 },
                                 tooltip: 'Stop (Ctrl+R)',
                                 icon: const Icon(Icons.stop),
@@ -1067,7 +1123,23 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
       iconSize: 22,
       foregroundColor: Theme.of(context).colorScheme.onSurface,
       side: BorderSide(
-        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.8),
+        width: 1.5,
+      ),
+    );
+    final templatesButtonStyle = IconButton.styleFrom(
+      minimumSize: const Size(dockButtonSize, dockButtonSize),
+      maximumSize: const Size(dockButtonSize, dockButtonSize),
+      padding: EdgeInsets.zero,
+      iconSize: 22,
+      foregroundColor: Theme.of(context).brightness == Brightness.light 
+          ? Colors.white 
+          : Theme.of(context).colorScheme.onSurface,
+      side: BorderSide(
+        color: Theme.of(context).brightness == Brightness.light
+            ? Colors.white.withValues(alpha: 0.8)
+            : Theme.of(context).colorScheme.outline.withValues(alpha: 0.8),
+        width: 1.5,
       ),
     );
     final dockDecoration = BoxDecoration(
@@ -1138,7 +1210,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                   tooltip: 'Templates',
                   onPressed: _showQuestionTemplates,
                   icon: const Icon(Icons.quiz),
-                  style: dockButtonStyle,
+                  style: templatesButtonStyle,
                 ),
                 const SizedBox(width: 10),
                 IconButton.filled(
@@ -1399,7 +1471,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                 tooltip: 'Templates',
                 onPressed: _showQuestionTemplates,
                 icon: const Icon(Icons.quiz),
-                style: dockButtonStyle,
+                style: templatesButtonStyle,
               ),
               const SizedBox(width: 10),
               IconButton.filled(
@@ -1647,16 +1719,17 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
               _ToggleRecordIntent: CallbackAction<_ToggleRecordIntent>(
                 onInvoke: (_) async {
                   if (speechProvider.isRecording) {
-                    await speechProvider.stopRecording();
-                    // Save session when stopping recording via keyboard shortcut
-                    if (_meetingProvider?.currentSession != null) {
-                      try {
-                        await _meetingProvider!.saveCurrentSession();
-                      } catch (e) {
-                        // Silently fail - session is auto-saved anyway
-                        print('Failed to save session on stop: $e');
-                      }
+                    if (!mounted) return null;
+                    try {
+                      await speechProvider.stopRecording();
+                      // Don't save automatically - let user save manually to avoid crashes
+                      // Session is auto-saved periodically anyway
+                    } catch (e, stackTrace) {
+                      debugPrint('Error stopping recording: $e');
+                      debugPrint('Stack trace: $stackTrace');
+                      // Don't show SnackBar here to avoid context access issues
                     }
+                    return null;
                   } else {
                     // Check if we should preserve existing bubbles (resume vs new)
                     final meetingProvider = context.read<MeetingProvider>();
@@ -1701,10 +1774,10 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Dark background section extending from top to split line
+                  // Background section extending from top to split line
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
@@ -1722,11 +1795,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
-                                      color: Colors.white,
-                                      shadows: [
-                                        Shadow(color: Colors.black, blurRadius: 4, offset: const Offset(1, 1)),
-                                        Shadow(color: Colors.black, blurRadius: 6, offset: const Offset(-1, -1)),
-                                      ],
+                                      color: Theme.of(context).colorScheme.onSurface,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -1746,15 +1815,16 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                       svc.setAuthToken(auth);
                                       setState(() {
                                         _modeService = svc;
-                                        _modeDisplaysFuture = svc.getModeDisplays();
+                                        _modeDisplaysFuture = svc.getCustomOnlyModeDisplays();
                                       });
                                     });
+                                    final theme = Theme.of(context);
                                     return Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.1),
+                                        color: theme.colorScheme.surfaceContainerHighest,
                                         borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                                        border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3), width: 1),
                                       ),
                                       child: const SizedBox(width: 100, height: 32, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
                                     );
@@ -1763,26 +1833,37 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                     future: _modeDisplaysFuture,
                                     builder: (context, snap) {
                                       if (!snap.hasData) {
+                                        final theme = Theme.of(context);
                                         return Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withValues(alpha: 0.1),
+                                            color: theme.colorScheme.surfaceContainerHighest,
                                             borderRadius: BorderRadius.circular(8),
-                                            border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                                            border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3), width: 1),
                                           ),
                                           child: const SizedBox(width: 100, height: 32, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
                                         );
                                       }
-                                      final displays = snap.data!;
+                                      final raw = snap.data!;
+                                      // Dropdown shows only custom modes; prepend General so user can always select it
+                                      final generalDisplay = ModeDisplay(
+                                        modeKey: MeetingMode.general.name,
+                                        label: MeetingMode.general.label,
+                                        icon: MeetingMode.general.icon,
+                                      );
+                                      final displays = raw.isEmpty
+                                          ? [generalDisplay]
+                                          : [generalDisplay, ...raw];
                                       final currentLabel = displays.where((d) => d.modeKey == currentKey).isEmpty
                                           ? 'General'
                                           : displays.firstWhere((d) => d.modeKey == currentKey).label;
+                                      final theme = Theme.of(context);
                                       return Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withValues(alpha: 0.1),
+                                          color: theme.colorScheme.surfaceContainerHighest,
                                           borderRadius: BorderRadius.circular(8),
-                                          border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
+                                          border: Border.all(color: theme.colorScheme.outline.withValues(alpha: 0.3), width: 1),
                                         ),
                                         child: PopupMenuButton<String?>(
                                           child: Row(
@@ -1790,19 +1871,19 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                             children: [
                                               Text(
                                                 currentLabel,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
+                                                style: TextStyle(
+                                                  color: theme.colorScheme.onSurface,
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.w500,
-                                                  shadows: [Shadow(color: Colors.black, blurRadius: 4, offset: Offset(1, 1))],
                                                 ),
                                               ),
                                               const SizedBox(width: 4),
-                                              const Icon(Icons.arrow_drop_down, color: Colors.white, size: 20),
+                                              Icon(Icons.arrow_drop_down, color: theme.colorScheme.onSurface, size: 20),
                                             ],
                                           ),
-                                          color: Colors.grey.shade900,
+                                          color: theme.colorScheme.surfaceContainerHighest,
                                           itemBuilder: (BuildContext menuContext) {
+                                            final theme = Theme.of(context);
                                             final items = <PopupMenuEntry<String?>>[];
                                             for (final d in displays) {
                                               items.add(
@@ -1811,36 +1892,41 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                                   child: Row(
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      Icon(d.icon, size: 18, color: Colors.white),
+                                                      Icon(d.icon, size: 18, color: theme.colorScheme.onSurface),
                                                       const SizedBox(width: 8),
-                                                      Text(d.label, style: const TextStyle(color: Colors.white)),
+                                                      Text(d.label, style: TextStyle(color: theme.colorScheme.onSurface)),
                                                       if (d.modeKey == currentKey) ...[
                                                         const Spacer(),
-                                                        const Icon(Icons.check, color: Colors.white, size: 18),
+                                                        Icon(Icons.check, color: theme.colorScheme.primary, size: 18),
                                                       ],
                                                     ],
                                                   ),
                                                 ),
                                               );
                                             }
-                                            items.add(const PopupMenuDivider());
+                                            items.add(PopupMenuDivider(color: theme.colorScheme.outline.withValues(alpha: 0.2)));
                                             items.add(
                                               PopupMenuItem<String?>(
                                                 enabled: false,
                                                 child: InkWell(
-                                                  onTap: () {
+                                                  onTap: () async {
                                                     Navigator.pop(menuContext);
-                                                    Navigator.push(
+                                                    await Navigator.push(
                                                       navigatorContext,
                                                       MaterialPageRoute(builder: (context) => const ManageModePage()),
                                                     );
+                                                    if (mounted && _modeService != null) {
+                                                      setState(() {
+                                                        _modeDisplaysFuture = _modeService!.getCustomOnlyModeDisplays();
+                                                      });
+                                                    }
                                                   },
-                                                  child: const Row(
+                                                  child: Row(
                                                     mainAxisSize: MainAxisSize.min,
                                                     children: [
-                                                      Icon(Icons.settings, size: 18, color: Colors.white),
-                                                      SizedBox(width: 8),
-                                                      Text('Manage mode', style: TextStyle(color: Colors.white)),
+                                                      Icon(Icons.settings, size: 18, color: theme.colorScheme.onSurface),
+                                                      const SizedBox(width: 8),
+                                                      Text('Manage mode', style: TextStyle(color: theme.colorScheme.onSurface)),
                                                     ],
                                                   ),
                                                 ),
@@ -1887,10 +1973,10 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                 icon: const Icon(Icons.file_download),
                                 tooltip: 'Export (Ctrl+E)',
                                 onPressed: session == null ? null : _exportSession,
-                                color: Colors.white,
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                               PopupMenuButton(
-                                icon: const Icon(Icons.more_vert, color: Colors.white),
+                                icon: Icon(Icons.more_vert, color: Theme.of(context).colorScheme.onSurface),
                                 itemBuilder: (context) => [
                                   const PopupMenuItem(
                                     value: 'sessions',

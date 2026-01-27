@@ -10,6 +10,7 @@ import '../providers/theme_provider.dart';
 import '../services/shortcuts_service.dart';
 import '../services/appearance_service.dart';
 import 'email_change_verification_dialog.dart';
+import 'manage_mode_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -70,6 +71,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 label: 'Connection',
                 isSelected: _selectedIndex == 2,
                 onTap: () => setState(() => _selectedIndex = 2),
+              ),
+              _SidebarItem(
+                icon: Icons.tune,
+                label: 'Manage Modes',
+                isSelected: false,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ManageModePage()),
+                  );
+                },
               ),
               if (Platform.isWindows)
                 _SidebarItem(
@@ -1158,6 +1169,12 @@ class _AppearanceSettingsState extends State<_AppearanceSettings> {
                   leading: const Icon(Icons.palette),
                   title: const Text('Theme'),
                   subtitle: Text(_getThemeModeLabel(themeProvider.themeMode)),
+                  shape: const RoundedRectangleBorder(
+                    side: BorderSide.none,
+                  ),
+                  collapsedShape: const RoundedRectangleBorder(
+                    side: BorderSide.none,
+                  ),
                   children: [
                     RadioListTile<ThemeMode>(
                       title: const Text('Light'),

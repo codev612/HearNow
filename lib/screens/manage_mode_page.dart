@@ -159,12 +159,9 @@ class _ManageModePageState extends State<ManageModePage> {
       await _modeService.deleteCustomMode(custom.id, authToken: authToken);
       debugPrint('[RemoveMode] deleteCustomMode succeeded');
       if (mounted) {
-        await _loadAll();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Custom mode removed')),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Custom mode removed')),
+        );
       }
     } catch (e, st) {
       debugPrint('[RemoveMode] deleteCustomMode threw: $e');
@@ -184,9 +181,8 @@ class _ManageModePageState extends State<ManageModePage> {
   }
 
   Future<void> _showAddCustomModeDialog() async {
-    final result = await showDialog<CustomMeetingMode>(
-      context: context,
-      builder: (ctx) => _AddCustomModeDialog(),
+    final result = await Navigator.of(context).push<CustomMeetingMode?>(
+      MaterialPageRoute(builder: (_) => AddModePage()),
     );
     if (result == null || !mounted) return;
     final previous = List<CustomMeetingMode>.from(_customModes);
@@ -267,48 +263,104 @@ class _ManageModePageState extends State<ManageModePage> {
 
   Widget _buildTemplatesView() {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return ColoredBox(
-      color: theme.colorScheme.surface,
+      color: colorScheme.surface,
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.layers, size: 32, color: theme.colorScheme.primary),
-                const SizedBox(width: 12),
-                Text(
-                  'Templates',
-                  style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             Text(
-              'Choose a template to add as your own custom mode. You can edit it after adding.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              'Templates',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.3,
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 6),
+            Text(
+              'Add a template as a custom mode, then customize prompts and notes.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurface.withValues(alpha: 0.65),
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 28),
             Expanded(
               child: ListView.separated(
                 itemCount: MeetingMode.values.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                padding: const EdgeInsets.only(bottom: 16),
                 itemBuilder: (context, index) {
                   final mode = MeetingMode.values[index];
                   final summary = _templateSummaries[mode] ?? '';
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
-                    leading: CircleAvatar(
-                      child: Icon(mode.icon, color: theme.colorScheme.onPrimary),
-                    ),
-                    title: Text(mode.label),
-                    subtitle: Text(summary, style: theme.textTheme.bodySmall),
-                    trailing: FilledButton(
-                      onPressed: () => _addFromTemplate(mode),
-                      child: const Text('Add'),
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => _addFromTemplate(mode),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: colorScheme.primaryContainer.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(mode.icon, size: 22, color: colorScheme.onPrimaryContainer),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    mode.label,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  if (summary.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      summary,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: colorScheme.onSurface.withValues(alpha: 0.7),
+                                        height: 1.3,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            FilledButton.tonalIcon(
+                              onPressed: () => _addFromTemplate(mode),
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Add'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -322,12 +374,23 @@ class _ManageModePageState extends State<ManageModePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: const Text('Manage modes'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
+        ),
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(
+            height: 1,
+            color: colorScheme.outline.withValues(alpha: 0.2),
+          ),
         ),
       ),
       body: _isLoading
@@ -335,12 +398,20 @@ class _ManageModePageState extends State<ManageModePage> {
           : Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
+                Container(
                   width: 260,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    border: Border(
+                      right: BorderSide(
+                        color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+                      ),
+                    ),
+                  ),
                   child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
                         child: SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
@@ -507,10 +578,6 @@ class _CustomModeEditorState extends State<_CustomModeEditor> {
               Icon(widget.custom.icon, size: 32),
               const SizedBox(width: 12),
               Text(widget.custom.label, style: Theme.of(context).textTheme.headlineSmall),
-              const Padding(
-                padding: EdgeInsets.only(left: 8),
-                child: Text('(Custom)', style: TextStyle(fontSize: 12)),
-              ),
             ],
           ),
           const SizedBox(height: 32),
@@ -543,7 +610,7 @@ class _CustomModeEditorState extends State<_CustomModeEditor> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Used when asking AI questions during the meeting. Save with the button below.',
+                                'Used when asking AI questions during the meeting.',
                                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                       color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                                     ),
@@ -555,10 +622,21 @@ class _CustomModeEditorState extends State<_CustomModeEditor> {
                                   controller: _promptController,
                                   maxLines: null,
                                   expands: true,
-                                  decoration: const InputDecoration(
+                                  decoration: InputDecoration(
                                     hintText: 'Enter the real-time prompt...',
-                                    border: OutlineInputBorder(),
+                                    hintStyle: TextStyle(
+                                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                                    ),
+                                    border: const OutlineInputBorder(),
                                   ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: FilledButton(
+                                  onPressed: _savePrompt,
+                                  child: const Text('Save prompt'),
                                 ),
                               ),
                             ],
@@ -614,49 +692,42 @@ class _CustomModeEditorState extends State<_CustomModeEditor> {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              widget.onDelete != null
-                  ? TextButton.icon(
-                      onPressed: () async {
-                        debugPrint('[RemoveMode] Remove mode button pressed, custom.id=${widget.custom.id} label="${widget.custom.label}"');
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          useRootNavigator: true,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('Remove custom mode?'),
-                            content: Text(
-                                'Delete "${widget.custom.label}"? This cannot be undone.'),
-                            actions: [
-                              TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text('Cancel')),
-                              FilledButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  child: const Text('Delete')),
-                            ],
-                          ),
-                        );
-                        debugPrint('[RemoveMode] Dialog result: confirm=$confirm mounted=$mounted onDelete=${widget.onDelete != null ? "set" : "null"}');
-                        if (confirm == true && mounted && widget.onDelete != null) {
-                          final token = context.read<AuthProvider>().token;
-                          debugPrint('[RemoveMode] Calling onDelete id=${widget.custom.id} hasToken=${token != null && token.isNotEmpty} tokenLength=${token?.length ?? 0}');
-                          await widget.onDelete!(widget.custom, token);
-                          debugPrint('[RemoveMode] onDelete returned');
-                        }
-                      },
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('Remove mode'),
-                      style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
-                    )
-                  : const SizedBox.shrink(),
-              FilledButton(
-                onPressed: _savePrompt,
-                child: const Text('Save prompt'),
+          if (widget.onDelete != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () async {
+                  debugPrint('[RemoveMode] Remove mode button pressed, custom.id=${widget.custom.id} label="${widget.custom.label}"');
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    useRootNavigator: true,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Remove custom mode?'),
+                      content: Text(
+                          'Delete "${widget.custom.label}"? This cannot be undone.'),
+                      actions: [
+                        TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel')),
+                        FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Delete')),
+                      ],
+                    ),
+                  );
+                  debugPrint('[RemoveMode] Dialog result: confirm=$confirm mounted=$mounted onDelete=${widget.onDelete != null ? "set" : "null"}');
+                  if (confirm == true && mounted && widget.onDelete != null) {
+                    final token = context.read<AuthProvider>().token;
+                    debugPrint('[RemoveMode] Calling onDelete id=${widget.custom.id} hasToken=${token != null && token.isNotEmpty} tokenLength=${token?.length ?? 0}');
+                    await widget.onDelete!(widget.custom, token);
+                    debugPrint('[RemoveMode] onDelete returned');
+                  }
+                },
+                icon: const Icon(Icons.delete_outline, size: 18),
+                label: const Text('Remove mode'),
+                style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
               ),
-            ],
-          ),
+            ),
         ],
       ),
     );
@@ -693,11 +764,68 @@ class _NotesTemplateEditorState extends State<_NotesTemplateEditor> {
     widget.controller.text = _serializeNotesTemplate(_items);
   }
 
-  void _addSection() {
-    setState(() {
-      _items.add(_TemplateSection(id: _nextId(), title: '', description: ''));
-      _syncToController();
-    });
+  Future<void> _addSection() async {
+    final titleCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    const double dialogWidth = 440;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add section'),
+        content: SizedBox(
+          width: dialogWidth,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: titleCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Title',
+                    hintText: 'Section title',
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descCtrl,
+                  minLines: 3,
+                  maxLines: 6,
+                  decoration: InputDecoration(
+                    labelText: 'Description',
+                    hintText: 'Description or placeholder',
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                    alignLabelWithHint: true,
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Add')),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      setState(() {
+        _items.add(_TemplateSection(
+          id: _nextId(),
+          title: titleCtrl.text.trim(),
+          description: descCtrl.text.trim(),
+        ));
+        _syncToController();
+      });
+    }
   }
 
   void _addDefaultTemplate() {
@@ -726,10 +854,13 @@ class _NotesTemplateEditorState extends State<_NotesTemplateEditor> {
                 TextField(
                   controller: titleCtrl,
                   autofocus: true,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Title',
                     hintText: 'Section title',
-                    border: OutlineInputBorder(),
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -737,11 +868,14 @@ class _NotesTemplateEditorState extends State<_NotesTemplateEditor> {
                   controller: descCtrl,
                   minLines: 3,
                   maxLines: 6,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Description',
                     hintText: 'Description or placeholder',
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
                     alignLabelWithHint: true,
-                    border: OutlineInputBorder(),
+                    border: const OutlineInputBorder(),
                   ),
                 ),
               ],
@@ -851,15 +985,18 @@ class _NotesTemplateEditorState extends State<_NotesTemplateEditor> {
   }
 }
 
-class _AddCustomModeDialog extends StatefulWidget {
+/// Full-screen page for adding a new custom mode (replaces the add-mode dialog).
+class AddModePage extends StatefulWidget {
+  const AddModePage({super.key});
+
   @override
-  State<_AddCustomModeDialog> createState() => _AddCustomModeDialogState();
+  State<AddModePage> createState() => _AddModePageState();
 }
 
-class _AddCustomModeDialogState extends State<_AddCustomModeDialog> {
+class _AddModePageState extends State<AddModePage> {
   final _labelController = TextEditingController();
   final _promptController = TextEditingController();
-  final _templateController = TextEditingController();
+  final _notesController = TextEditingController();
   int _iconCodePoint = Icons.star.codePoint;
 
   static final List<IconData> _iconChoices = [
@@ -877,77 +1014,187 @@ class _AddCustomModeDialogState extends State<_AddCustomModeDialog> {
   void dispose() {
     _labelController.dispose();
     _promptController.dispose();
-    _templateController.dispose();
+    _notesController.dispose();
     super.dispose();
+  }
+
+  void _onCreate() {
+    final custom = CustomMeetingMode(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      label: _labelController.text.trim().isEmpty ? 'Custom' : _labelController.text.trim(),
+      iconCodePoint: _iconCodePoint,
+      realTimePrompt: _promptController.text,
+      notesTemplate: _notesController.text,
+    );
+    Navigator.of(context).pop(custom);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add custom mode'),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text('Label', style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _labelController,
-                decoration: const InputDecoration(hintText: 'Mode name', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                children: _iconChoices.map((icon) {
-                  final codePoint = icon.codePoint;
-                  return IconButton(
-                    onPressed: () => setState(() => _iconCodePoint = codePoint),
-                    icon: Icon(icon, color: _iconCodePoint == codePoint ? Theme.of(context).colorScheme.primary : null),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              const Text('Real-time prompt', style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _promptController,
-                maxLines: 3,
-                decoration: const InputDecoration(hintText: 'Optional', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              const Text('Notes template (optional)', style: TextStyle(fontWeight: FontWeight.w500)),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _templateController,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  hintText: 'Leave empty to add later, or use "Add template" in the editor',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Scaffold(
+      backgroundColor: colorScheme.surface,
+      appBar: AppBar(
+        title: const Text('Add custom mode'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () {
-            final custom = CustomMeetingMode(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              label: _labelController.text.trim().isEmpty ? 'Custom' : _labelController.text.trim(),
-              iconCodePoint: _iconCodePoint,
-              realTimePrompt: _promptController.text,
-              notesTemplate: _templateController.text,
-            );
-            Navigator.pop(context, custom);
-          },
-          child: const Text('Add'),
-        ),
-      ],
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(IconData(_iconCodePoint, fontFamily: 'MaterialIcons'), size: 32),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _labelController,
+                          decoration: InputDecoration(
+                            hintText: 'Mode name',
+                            hintStyle: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                            ),
+                            border: const OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('(Custom)', style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurface.withValues(alpha: 0.7))),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: _iconChoices.map((icon) {
+                      final codePoint = icon.codePoint;
+                      return IconButton(
+                        onPressed: () => setState(() => _iconCodePoint = codePoint),
+                        icon: Icon(icon, size: 20, color: _iconCodePoint == codePoint ? colorScheme.primary : null),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 32),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.auto_awesome, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Real-time Prompt',
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Used when asking AI questions during the meeting.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 160,
+                            child: TextField(
+                              controller: _promptController,
+                              maxLines: null,
+                              expands: true,
+                              decoration: InputDecoration(
+                                hintText: 'Enter the real-time prompt...',
+                                hintStyle: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                                ),
+                                border: const OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.note, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Notes Template',
+                                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '(optional)',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSurface.withValues(alpha: 0.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Leave empty or use "Add template" / "Add section" below. You can edit after creating.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 220,
+                            child: _NotesTemplateEditor(controller: _notesController),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 12),
+                FilledButton(
+                  onPressed: _onCreate,
+                  child: const Text('Add'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

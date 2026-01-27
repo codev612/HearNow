@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,6 +62,9 @@ class MeetingModeService {
 
   static bool isCustomModeKey(String key) => key.startsWith(_customPrefix);
   static String customModeKey(String id) => '$_customPrefix$id';
+
+  /// Notify listeners when custom modes were added/removed/updated elsewhere. Bump to refresh dropdowns.
+  static final ValueNotifier<int> customModesVersion = ValueNotifier(0);
 
   String? _authToken;
   
@@ -182,6 +186,14 @@ class MeetingModeService {
     return list;
   }
 
+  /// Only custom modes for the session mode dropdown (no template/built-in modes).
+  Future<List<ModeDisplay>> getCustomOnlyModeDisplays() async {
+    final custom = await getCustomModes();
+    return custom
+        .map((c) => ModeDisplay(modeKey: customModeKey(c.id), label: c.label, icon: c.icon))
+        .toList();
+  }
+
   /// Config for a session's mode (built-in or custom).
   Future<MeetingModeConfig> getConfigForModeKey(String modeKey) async {
     if (isCustomModeKey(modeKey)) {
@@ -240,6 +252,7 @@ class MeetingModeService {
     if (list.any((e) => e.id == custom.id)) return;
     list.add(custom);
     await _saveCustomModes(list);
+    customModesVersion.value++;
   }
 
   Future<void> updateCustomMode(CustomMeetingMode custom) async {
@@ -272,6 +285,7 @@ class MeetingModeService {
       final before = list.length;
       list.removeWhere((e) => e.id == id);
       await _cacheCustomModes(list);
+      customModesVersion.value++;
       debugPrint('[RemoveMode] deleteCustomMode offline done: list $before -> ${list.length}');
       return;
     }
@@ -295,6 +309,7 @@ class MeetingModeService {
       final data = jsonDecode(getResponse.body) as List<dynamic>;
       final list = (data.map((e) => CustomMeetingMode.fromJson(e as Map<String, dynamic>))).toList();
       await _cacheCustomModes(list);
+      customModesVersion.value++;
       debugPrint('[RemoveMode] deleteCustomMode done, cache refreshed from API length=${list.length}');
     }
   }
