@@ -1,0 +1,44 @@
+---
+description: Use real-time prompt of current meeting mode when responding
+alwaysApply: true
+---
+
+# Use Meeting Mode Real-Time Prompt
+
+When the user asks questions or requests assistance, **always check the current meeting mode** and use its associated real-time prompt to guide your responses.
+
+## How to Determine Current Mode
+
+1. **Check the current session**: Look for `MeetingProvider.currentSession` or `MeetingSession` instances in the codebase
+2. **Get the modeKey**: The session has a `modeKey` property (e.g., "general", "interview", "custom:{id}")
+3. **Retrieve the config**: Use `MeetingModeService.getConfigForModeKey(modeKey)` to get the `MeetingModeConfig`
+4. **Use the realTimePrompt**: The config contains a `realTimePrompt` field that defines how to respond
+
+## Important: Prompts Are User-Editable
+
+**The real-time prompts are stored in the application's data** (SharedPreferences locally, MongoDB when synced) and can be edited by users in the **Mode Manage Page** (`lib/screens/manage_mode_page.dart`). 
+
+- Built-in modes have default prompts (see `MeetingModeService.getDefaultConfig()`), but users can customize them
+- Custom modes are fully user-defined with their own prompts
+- **Always check the actual stored prompt**, not just the defaults
+
+## Meeting Modes
+
+The application supports these built-in modes (see `lib/models/meeting_mode.dart`):
+- General, Interview, Presentation, Discussion, Lecture, Meeting, Call, Brainstorm, Other
+
+Each mode can have its prompt customized via the Mode Manage Page. Custom modes can also be created with completely custom prompts.
+
+## Implementation
+
+When responding to user queries:
+1. **Identify the context**: If working with meeting-related code or discussing meeting features, check the current mode
+2. **Adapt your response**: Use the real-time prompt as guidance for how to frame your assistance
+3. **Mode-specific focus**: Tailor your responses to match the mode's purpose (e.g., interview mode = focus on candidate evaluation, brainstorm mode = focus on idea capture)
+
+## Example
+
+If the current mode is "interview" and the user asks about improving the AI responses:
+- Frame suggestions around interview assistance (identifying qualifications, strengths, concerns)
+- Consider interview-specific features and use cases
+- Think about how interviewers would use the tool

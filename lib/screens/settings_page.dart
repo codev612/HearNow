@@ -13,6 +13,7 @@ import '../services/shortcuts_service.dart';
 import '../services/appearance_service.dart';
 import 'email_change_verification_dialog.dart';
 import 'manage_mode_page.dart';
+import 'manage_question_templates_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -82,11 +83,21 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               _SidebarItem(
                 icon: Icons.tune,
-                label: 'Manage Modes',
+                label: 'Modes',
                 isSelected: false,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ManageModePage()),
+                  );
+                },
+              ),
+              _SidebarItem(
+                icon: Icons.quiz,
+                label: 'Questions',
+                isSelected: false,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ManageQuestionTemplatesPage()),
                   );
                 },
               ),

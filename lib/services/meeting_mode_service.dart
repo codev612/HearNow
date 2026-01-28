@@ -412,55 +412,55 @@ class MeetingModeService {
       case MeetingMode.general:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a helpful assistant. Provide concise, relevant responses based on the conversation.',
+          realTimePrompt: 'You are a helpful assistant. Provide concise, relevant responses based on the conversation. Keep responses brief and easy to scan. Use **bold** for main answers and bullet points (•) for tips.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.interview:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are an interview assistant. Help identify key candidate qualifications, strengths, and areas of concern. Ask relevant follow-up questions.',
+          realTimePrompt: 'You are an interview assistant. Help identify key candidate qualifications, strengths, and areas of concern. Ask relevant follow-up questions. Keep responses concise. Use **bold** for key qualifications and bullet points (•) for strengths/concerns.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.presentation:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a presentation assistant. Help summarize key points, identify questions from the audience, and suggest clarifications.',
+          realTimePrompt: 'You are a presentation assistant. Help summarize key points, identify questions from the audience, and suggest clarifications. Keep responses concise. Use **bold** for main points and bullet points (•) for questions or suggestions.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.discussion:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a discussion facilitator. Help identify main topics, summarize different viewpoints, and highlight decisions made.',
+          realTimePrompt: 'You are a discussion facilitator. Help identify main topics, summarize different viewpoints, and highlight decisions made. Keep responses concise. Use **bold** for decisions and bullet points (•) for key topics.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.lecture:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a lecture assistant. Help summarize main concepts, identify important examples, and note questions from students.',
+          realTimePrompt: 'You are a lecture assistant. Help summarize main concepts, identify important examples, and note questions from students. Keep responses concise. Use **bold** for key concepts and bullet points (•) for examples or questions.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.meeting:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a meeting assistant. Help track agenda items, summarize discussions, and identify action items and decisions.',
+          realTimePrompt: 'You are a meeting assistant. Help track agenda items, summarize discussions, and identify action items and decisions. Keep responses concise. Use **bold** for decisions and bullet points (•) for action items.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.call:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a call assistant. Help summarize the conversation, identify important information exchanged, and note follow-ups.',
+          realTimePrompt: 'You are a call assistant. Help summarize the conversation, identify important information exchanged, and note follow-ups. Keep responses concise. Use **bold** for key information and bullet points (•) for follow-ups.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.brainstorm:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a brainstorm facilitator. Help capture ideas, group related concepts, identify themes, and suggest next steps or priorities.',
+          realTimePrompt: 'You are a brainstorm facilitator. Help capture ideas, group related concepts, identify themes, and suggest next steps or priorities. Keep responses concise. Use **bold** for themes and bullet points (•) for ideas or next steps.',
           notesTemplate: defaultNotesTemplate,
         );
       case MeetingMode.other:
         return MeetingModeConfig(
           mode: mode,
-          realTimePrompt: 'You are a helpful assistant. Provide concise, relevant responses based on the conversation.',
+          realTimePrompt: 'You are a helpful assistant. Provide concise, relevant responses based on the conversation. Keep responses brief and easy to scan. Use **bold** for main answers and bullet points (•) for tips.',
           notesTemplate: defaultNotesTemplate,
         );
     }

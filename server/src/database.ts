@@ -106,12 +106,24 @@ export interface CustomModesDoc {
   modes: CustomModeEntry[];
 }
 
+export interface QuestionTemplateEntry {
+  id: string;
+  question: string;
+}
+
+export interface QuestionTemplatesDoc {
+  _id?: ObjectId;
+  userId: string;
+  templates: QuestionTemplateEntry[];
+}
+
 let client: MongoClient | null = null;
 let db: Db | null = null;
 let usersCollection: Collection<User> | null = null;
 let sessionsCollection: Collection<MeetingSession> | null = null;
 let modeConfigsCollection: Collection<ModeConfigsDoc> | null = null;
 let customModesCollection: Collection<CustomModesDoc> | null = null;
+let questionTemplatesCollection: Collection<QuestionTemplatesDoc> | null = null;
 
 // Initialize MongoDB connection
 export const connectDB = async (): Promise<void> => {
@@ -159,6 +171,11 @@ export const connectDB = async (): Promise<void> => {
       customModesCollection = db.collection<CustomModesDoc>('custom_modes');
       await customModesCollection.createIndex({ userId: 1 }, { unique: true });
     }
+
+    if (!questionTemplatesCollection) {
+      questionTemplatesCollection = db.collection<QuestionTemplatesDoc>('question_templates');
+      await questionTemplatesCollection.createIndex({ userId: 1 }, { unique: true });
+    }
   } catch (error) {
     console.error('MongoDB connection error:', error);
     throw error;
@@ -193,6 +210,13 @@ const getCustomModesCollection = (): Collection<CustomModesDoc> => {
     throw new Error('Database not connected. Call connectDB() first.');
   }
   return customModesCollection;
+};
+
+const getQuestionTemplatesCollection = (): Collection<QuestionTemplatesDoc> => {
+  if (!questionTemplatesCollection) {
+    throw new Error('Database not connected. Call connectDB() first.');
+  }
+  return questionTemplatesCollection;
 };
 
 // Helper function to convert MongoDB user to API format
@@ -723,6 +747,44 @@ export const deleteCustomMode = async (userId: string, modeId: string): Promise<
   console.log('[RemoveMode] db read-after-write', { count: modesAfter.length, modeIds: modesAfter.map((m: CustomModeEntry) => m.id), stillHasDeletedId: modesAfter.some((m: CustomModeEntry) => String(m.id) === String(modeId)) });
 };
 
+// Question templates
+export const getQuestionTemplates = async (userId: string): Promise<QuestionTemplateEntry[]> => {
+  const collection = getQuestionTemplatesCollection();
+  console.log('[DB] getQuestionTemplates: userId=', userId);
+  const doc = await collection.findOne({ userId });
+  const templates = doc?.templates ?? [];
+  console.log('[DB] getQuestionTemplates: found', templates.length, 'templates');
+  return templates;
+};
+
+export const saveQuestionTemplates = async (userId: string, templates: QuestionTemplateEntry[]): Promise<void> => {
+  const collection = getQuestionTemplatesCollection();
+  console.log('[DB] saveQuestionTemplates: userId=', userId, 'count=', templates.length);
+  const result = await collection.updateOne(
+    { userId },
+    { $set: { templates } },
+    { upsert: true }
+  );
+  console.log('[DB] saveQuestionTemplates result:', {
+    acknowledged: result.acknowledged,
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+    upsertedCount: result.upsertedCount,
+  });
+};
+
+export const deleteQuestionTemplate = async (userId: string, templateId: string): Promise<void> => {
+  const collection = getQuestionTemplatesCollection();
+  const doc = await collection.findOne({ userId });
+  const templates = doc?.templates ?? [];
+  const next = templates.filter((t) => String(t.id) !== String(templateId));
+  await collection.updateOne(
+    { userId },
+    { $set: { templates: next } },
+    { upsert: true }
+  );
+};
+
 // Close database connection
 export const closeDB = async (): Promise<void> => {
   if (client) {
@@ -733,6 +795,7 @@ export const closeDB = async (): Promise<void> => {
     sessionsCollection = null;
     modeConfigsCollection = null;
     customModesCollection = null;
+    questionTemplatesCollection = null;
     console.log('MongoDB connection closed');
   }
 };

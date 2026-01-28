@@ -22,6 +22,9 @@ import {
   getCustomModes,
   saveCustomModes,
   deleteCustomMode,
+  getQuestionTemplates,
+  saveQuestionTemplates,
+  deleteQuestionTemplate,
   MeetingSession,
 } from './database.js';
 import { fileURLToPath } from 'url';
@@ -314,6 +317,58 @@ app.delete('/api/custom-mode-configs/:id', authenticate, async (req: AuthRequest
   }
 });
 
+// Question templates endpoints
+app.get('/api/question-templates', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    console.log('[QuestionTemplates] GET request from userId:', userId);
+    const templates = await getQuestionTemplates(userId);
+    console.log('[QuestionTemplates] Returning', templates.length, 'templates');
+    res.json(templates);
+  } catch (error: any) {
+    console.error('Error getting question templates:', error);
+    res.status(500).json({ error: error.message || 'Failed to get question templates' });
+  }
+});
+
+app.put('/api/question-templates', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const body = req.body;
+    console.log('[QuestionTemplates] PUT request from userId:', userId, 'body:', JSON.stringify(body));
+    if (!Array.isArray(body)) {
+      console.log('[QuestionTemplates] Invalid body - not an array');
+      return res.status(400).json({ error: 'Body must be an array of question templates' });
+    }
+    const templates = body.map((t: any) => ({
+      id: String(t?.id ?? ''),
+      question: String(t?.question ?? ''),
+    }));
+    console.log('[QuestionTemplates] Saving', templates.length, 'templates to DB');
+    await saveQuestionTemplates(userId, templates);
+    console.log('[QuestionTemplates] Successfully saved templates');
+    res.status(200).json(templates);
+  } catch (error: any) {
+    console.error('[QuestionTemplates] Error saving question templates:', error);
+    res.status(500).json({ error: error.message || 'Failed to save question templates' });
+  }
+});
+
+app.delete('/api/question-templates/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const templateId = req.params.id;
+    if (!templateId) {
+      return res.status(400).json({ error: 'Template id is required' });
+    }
+    await deleteQuestionTemplate(userId, templateId);
+    res.status(200).json({ ok: true });
+  } catch (error: any) {
+    console.error('Error deleting question template:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete question template' });
+  }
+});
+
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
@@ -328,7 +383,7 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
       });
     }
 
-    const { turns, mode, question } = req.body ?? {};
+    const { turns, mode, question, systemPrompt: providedSystemPrompt } = req.body ?? {};
     if (!Array.isArray(turns)) {
       return res.status(400).json({ error: 'Missing turns[]' });
     }
@@ -403,7 +458,15 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
         }
         break;
       default: // 'reply'
-        systemPrompt = 'You are HearNow, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
+        // Use provided system prompt or default
+        const providedPrompt = typeof providedSystemPrompt === 'string' && providedSystemPrompt.trim().length > 0
+          ? providedSystemPrompt.trim()
+          : 'You are HearNow, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
+        
+        // Enhance prompt to request concise, formatted responses
+        const enhancedPrompt = `${providedPrompt}\n\nIMPORTANT: Keep responses concise and easy to scan. Use formatting to highlight key points:\n- Use **bold** for main answers or key takeaways\n- Use bullet points (•) for tips or action items\n- Keep paragraphs short (2-3 sentences max)\n- Lead with the most important information first`;
+        
+        systemPrompt = enhancedPrompt;
         if (historyText.length > 0) {
           userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
         } else if (questionText.length > 0) {
@@ -752,7 +815,7 @@ aiWss.on('connection', (ws: WebSocket) => {
       currentRequestId = requestId;
       cancelled = false;
 
-      const { turns, mode, question } = data ?? {};
+      const { turns, mode, question, systemPrompt: providedSystemPrompt } = data ?? {};
       if (!Array.isArray(turns)) {
         return send({ type: 'ai_error', requestId, status: 400, message: 'Missing turns[]' });
       }
@@ -833,8 +896,15 @@ aiWss.on('connection', (ws: WebSocket) => {
           }
           break;
         default:
-          systemPrompt =
-            'You are HearNow, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
+          // Use provided system prompt or default
+          const providedPrompt = typeof providedSystemPrompt === 'string' && providedSystemPrompt.trim().length > 0
+            ? providedSystemPrompt.trim()
+            : 'You are HearNow, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
+          
+          // Enhance prompt to request concise, formatted responses
+          const enhancedPrompt = `${providedPrompt}\n\nIMPORTANT: Keep responses concise and easy to scan. Use formatting to highlight key points:\n- Use **bold** for main answers or key takeaways\n- Use bullet points (•) for tips or action items\n- Keep paragraphs short (2-3 sentences max)\n- Lead with the most important information first`;
+          
+          systemPrompt = enhancedPrompt;
           if (historyText.length > 0) {
             userPrompt = `Conversation transcript (most recent last):\n${historyText}\n\nUser question (optional): ${questionText || '(none)'}\n\nWrite your assistant reply.`;
           } else if (questionText.length > 0) {

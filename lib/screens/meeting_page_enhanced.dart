@@ -14,6 +14,7 @@ import '../services/meeting_mode_service.dart';
 import '../services/ai_service.dart';
 import '../providers/shortcuts_provider.dart';
 import 'manage_mode_page.dart';
+import 'manage_question_templates_page.dart';
 
 class MeetingPageEnhanced extends StatefulWidget {
   const MeetingPageEnhanced({super.key});
@@ -30,6 +31,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   String _lastTailSignature = '';
   String _suggestedQuestions = '';
   bool _showQuestionSuggestions = false;
+  List<String> _cachedQuestions = [];
   bool _showSummary = false;
   bool _showInsights = false;
   SpeechToTextProvider? _speechProvider;
@@ -47,6 +49,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   MeetingModeService? _modeService;
   Future<List<ModeDisplay>>? _modeDisplaysFuture;
   VoidCallback? _modesVersionListener;
+  MeetingQuestionService? _questionService;
 
   @override
   void initState() {
@@ -65,6 +68,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
       _meetingProvider = context.read<MeetingProvider>();
       
       final authToken = authProvider.token;
+      _questionService = MeetingQuestionService()..setAuthToken(authToken);
       _speechProvider!.initialize(
         wsUrl: AppConfig.serverWebSocketUrl,
         httpBaseUrl: AppConfig.serverHttpBaseUrl,
@@ -73,6 +77,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
       
       // Update AI service with auth token (but don't restore session here - we'll handle it below)
       _meetingProvider!.setAuthTokensOnly(authToken);
+      _questionService?.setAuthToken(authToken);
 
       // Check if we should restore session or start fresh
       final currentSession = _meetingProvider!.currentSession;
@@ -107,6 +112,14 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
 
       // Sync bubbles to meeting session
       _speechProvider!.addListener(_syncBubblesToSession);
+      
+      // Load question templates
+      _loadQuestionTemplates();
+      
+      // Reload questions when returning to this page (e.g., from settings)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // This will be called when the page becomes visible again
+      });
       
       // Listen for session changes to restore bubbles when session is loaded
       _meetingProvider!.addListener(_onSessionChanged);
@@ -194,6 +207,13 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
         _isUpdatingBubbles = false;
       }
     }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload questions when route becomes active (e.g., returning from settings)
+    _loadQuestionTemplates();
   }
 
   @override
@@ -641,53 +661,58 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     );
   }
 
-  Future<void> _showQuestionTemplates() async {
-    final category = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Question Templates'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: MeetingQuestionService.getQuestionsByCategoryMap().entries.map((entry) {
-              return ListTile(
-                title: Text(entry.key),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: () => Navigator.pop(context, entry.key),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-
-    if (category != null && mounted) {
-      final questions = MeetingQuestionService.getQuestionsByCategory(category);
-      final selected = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('$category Questions'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: questions.length,
-              itemBuilder: (context, index) {
-                return ListTile(
-                  title: Text(questions[index]),
-                  onTap: () => Navigator.pop(context, questions[index]),
-                );
-              },
-            ),
-          ),
-        ),
-      );
-
-      if (selected != null && mounted) {
-        _askAiController.text = selected;
-      }
+  Future<String?> _getRealTimePrompt() async {
+    if (_meetingProvider?.currentSession == null) return null;
+    final modeKey = _meetingProvider!.currentSession!.modeKey;
+    try {
+      final config = await MeetingModeService().getConfigForModeKey(modeKey);
+      return config.realTimePrompt;
+    } catch (e) {
+      print('Failed to get real-time prompt: $e');
+      return null;
     }
+  }
+
+  Future<void> _askAiWithPrompt(String? question) async {
+    if (_speechProvider == null || _speechProvider!.isAiLoading) return;
+    final systemPrompt = await _getRealTimePrompt();
+    _speechProvider!.askAi(question: question, systemPrompt: systemPrompt);
+  }
+
+  void _askQuestionFromTemplate(String question) {
+    if (_speechProvider != null && !_speechProvider!.isAiLoading) {
+      _askAiWithPrompt(question);
+    }
+  }
+
+  Future<void> _loadQuestionTemplates() async {
+    if (_questionService == null) return;
+    final questions = await _questionService!.getAllQuestions();
+    if (mounted) {
+      setState(() {
+        _cachedQuestions = questions;
+      });
+    }
+  }
+
+  Future<List<PopupMenuEntry<String>>> _buildQuestionMenuItemsAsync() async {
+    // Reload questions when menu is opened
+    await _loadQuestionTemplates();
+    return _cachedQuestions.map((question) {
+      return PopupMenuItem<String>(
+        value: question,
+        child: Text(question),
+      );
+    }).toList();
+  }
+
+  List<PopupMenuEntry<String>> _buildQuestionMenuItems() {
+    return _cachedQuestions.map((question) {
+      return PopupMenuItem<String>(
+        value: question,
+        child: Text(question),
+      );
+    }).toList();
   }
 
   Future<void> _generateSuggestedQuestions({bool regenerate = false}) async {
@@ -1269,23 +1294,26 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                       ),
                       textInputAction: TextInputAction.send,
-                      onSubmitted: (value) => speechProvider.askAi(question: value),
+                      onSubmitted: (value) => _askAiWithPrompt(value),
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
-                IconButton.outlined(
-                  tooltip: 'Templates',
-                  onPressed: _showQuestionTemplates,
-                  icon: const Icon(Icons.quiz),
-                  style: templatesButtonStyle,
+                _QuestionTemplateButton(
+                  cachedQuestions: _cachedQuestions,
+                  onQuestionSelected: _askQuestionFromTemplate,
+                  onReload: _loadQuestionTemplates,
+                  getQuestions: () async {
+                    if (_questionService == null) return _cachedQuestions;
+                    return await _questionService!.getAllQuestions();
+                  },
                 ),
                 const SizedBox(width: 10),
                 IconButton.filled(
                   tooltip: 'Ask (Ctrl+Enter)',
                   onPressed: speechProvider.isAiLoading
                       ? null
-                      : () => speechProvider.askAi(question: _askAiController.text),
+                      : () => _askAiWithPrompt(_askAiController.text),
                   icon: speechProvider.isAiLoading
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.auto_awesome),
@@ -1530,16 +1558,19 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                     ),
                     textInputAction: TextInputAction.send,
-                    onSubmitted: (value) => speechProvider.askAi(question: value),
+                    onSubmitted: (value) => _askAiWithPrompt(value),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
-              IconButton.outlined(
-                tooltip: 'Templates',
-                onPressed: _showQuestionTemplates,
-                icon: const Icon(Icons.quiz),
-                style: templatesButtonStyle,
+              _QuestionTemplateButton(
+                cachedQuestions: _cachedQuestions,
+                onQuestionSelected: _askQuestionFromTemplate,
+                onReload: _loadQuestionTemplates,
+                getQuestions: () async {
+                  if (_questionService == null) return _cachedQuestions;
+                  return await _questionService!.getAllQuestions();
+                },
               ),
               const SizedBox(width: 10),
               IconButton.filled(
@@ -1847,7 +1878,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
               ),
               _AskAiIntent: CallbackAction<_AskAiIntent>(
                 onInvoke: (_) {
-                  speechProvider.askAi(question: _askAiController.text);
+                  _askAiWithPrompt(_askAiController.text);
                   return null;
                 },
               ),
@@ -2230,6 +2261,115 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
           ),
         );
       },
+    );
+  }
+}
+
+class _QuestionTemplateButton extends StatefulWidget {
+  final List<String> cachedQuestions;
+  final Function(String) onQuestionSelected;
+  final Future<void> Function() onReload;
+  final Future<List<String>> Function() getQuestions;
+
+  const _QuestionTemplateButton({
+    required this.cachedQuestions,
+    required this.onQuestionSelected,
+    required this.onReload,
+    required this.getQuestions,
+  });
+
+  @override
+  State<_QuestionTemplateButton> createState() => _QuestionTemplateButtonState();
+}
+
+class _QuestionTemplateButtonState extends State<_QuestionTemplateButton> {
+  static const double _buttonSize = 48.0;
+  
+  Future<void> _showMenu() async {
+    // Reload questions before showing menu
+    await widget.onReload();
+    if (!mounted) return;
+    
+    // Get fresh questions after reload
+    final questions = await widget.getQuestions();
+    if (!mounted) return;
+    
+    final RenderBox? buttonBox = context.findRenderObject() as RenderBox?;
+    if (buttonBox == null) return;
+    
+    final position = buttonBox.localToGlobal(Offset.zero);
+    final size = buttonBox.size;
+    
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy + size.height + 4,
+        position.dx + size.width,
+        position.dy + size.height + 4,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      items: [
+        ...questions.map((question) {
+          return PopupMenuItem<String>(
+            value: question,
+            child: Text(question),
+          );
+        }),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: '__manage_templates__',
+          child: Row(
+            children: [
+              Icon(Icons.settings, size: 20, color: Theme.of(context).colorScheme.onSurface),
+              const SizedBox(width: 8),
+              const Text('Manage Templates'),
+            ],
+          ),
+        ),
+      ],
+    );
+    
+    if (selected != null && mounted) {
+      if (selected == '__manage_templates__') {
+        // Navigate to manage templates page
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const ManageQuestionTemplatesPage(),
+          ),
+        );
+      } else {
+        widget.onQuestionSelected(selected);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Question Templates',
+      child: GestureDetector(
+        onTap: _showMenu,
+        child: Container(
+          width: _buttonSize,
+          height: _buttonSize,
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Colors.deepPurple,
+              width: 1.5,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.quiz,
+            size: 22,
+            color: Colors.deepPurple,
+          ),
+        ),
+      ),
     );
   }
 }

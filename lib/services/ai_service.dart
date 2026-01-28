@@ -142,6 +142,7 @@ class AiService {
     required List<Map<String, String>> turns,
     String? question,
     String mode = 'reply',
+    String? systemPrompt,
     Duration timeout = const Duration(seconds: 60),
   }) {
     if (aiWsUrl == null) {
@@ -176,6 +177,9 @@ class AiService {
 
         final q = question?.trim() ?? '';
         if (q.isNotEmpty) payload['question'] = q;
+        
+        final prompt = systemPrompt?.trim() ?? '';
+        if (prompt.isNotEmpty) payload['systemPrompt'] = prompt;
 
         print('[AiService] Sending ai_request: mode=$mode, requestId=$requestId');
         try {
@@ -224,6 +228,7 @@ class AiService {
     required List<Map<String, String>> turns,
     String? question,
     String mode = 'reply',
+    String? systemPrompt,
     Duration timeout = const Duration(seconds: 60),
   }) async {
     if (aiWsUrl != null) {
@@ -233,6 +238,7 @@ class AiService {
           turns: turns,
           question: question,
           mode: mode,
+          systemPrompt: systemPrompt,
           timeout: timeout,
         )) {
           buffer.write(delta);
@@ -254,6 +260,9 @@ class AiService {
 
     final q = question?.trim() ?? '';
     if (q.isNotEmpty) payload['question'] = q;
+    
+    final prompt = systemPrompt?.trim() ?? '';
+    if (prompt.isNotEmpty) payload['systemPrompt'] = prompt;
 
     final headers = <String, String>{
       'Content-Type': 'application/json',

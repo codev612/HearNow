@@ -367,7 +367,7 @@ class SpeechToTextProvider extends ChangeNotifier {
     return null;
   }
 
-  Future<void> askAi({String? question}) async {
+  Future<void> askAi({String? question, String? systemPrompt}) async {
     final ai = _aiService;
     if (ai == null) {
       _aiErrorMessage = 'AI service not initialized';
@@ -401,12 +401,13 @@ class SpeechToTextProvider extends ChangeNotifier {
           turns: turns,
           question: finalQuestion,
           mode: 'reply',
+          systemPrompt: systemPrompt,
         )) {
           _aiResponse += delta;
           notifyListeners();
         }
       } else {
-        final text = await ai.respond(turns: turns, question: finalQuestion, mode: 'reply');
+        final text = await ai.respond(turns: turns, question: finalQuestion, mode: 'reply', systemPrompt: systemPrompt);
         _aiResponse = text;
       }
       _aiErrorMessage = '';
