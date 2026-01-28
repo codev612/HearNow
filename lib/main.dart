@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:system_tray/system_tray.dart';
 import 'dart:io' show Platform;
 import 'providers/speech_to_text_provider.dart';
 import 'providers/meeting_provider.dart';
@@ -12,6 +13,68 @@ import 'services/ai_service.dart';
 import 'services/appearance_service.dart';
 import 'config/app_config.dart';
 import 'screens/app_shell.dart';
+
+final SystemTray systemTray = SystemTray();
+
+Future<void> initSystemTray() async {
+  if (!Platform.isWindows) return;
+  
+  try {
+    // Initialize system tray
+    // For Windows, use the icon from resources or assets
+    // The package will look for the icon in the assets folder
+    await systemTray.initSystemTray(
+      title: "HearNow",
+      iconPath: "assets/app_icon.ico",
+      toolTip: "HearNow - Speech to Text",
+    );
+    
+    // Create tray menu (shown on right-click)
+    final Menu menu = Menu();
+    await menu.buildFrom([
+      MenuItemLabel(
+        label: 'Show',
+        onClicked: (menuItem) async {
+          await windowManager.show();
+          await windowManager.focus();
+        },
+      ),
+      MenuItemLabel(
+        label: 'Exit',
+        onClicked: (menuItem) async {
+          await windowManager.destroy();
+        },
+      ),
+    ]);
+    
+    // Set context menu
+    await systemTray.setContextMenu(menu);
+    
+    // Handle tray icon events
+    systemTray.registerSystemTrayEventHandler((eventName) async {
+      print('[SystemTray] Event received: $eventName');
+      if (eventName == kSystemTrayEventClick) {
+        // Left-click: toggle window visibility
+        final isVisible = await windowManager.isVisible();
+        if (isVisible) {
+          await windowManager.hide();
+        } else {
+          await windowManager.show();
+          await windowManager.focus();
+        }
+      } else if (eventName == kSystemTrayEventRightClick) {
+        // Right-click: show context menu
+        print('[SystemTray] Right-click detected, showing context menu');
+        await systemTray.popUpContextMenu();
+      } else {
+        print('[SystemTray] Unknown event: $eventName');
+      }
+    });
+  } catch (e) {
+    print('[SystemTray] Error initializing system tray: $e');
+    // Continue without system tray if initialization fails
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +94,7 @@ void main() async {
     WindowOptions windowOptions = WindowOptions(
       size: windowSize,
       backgroundColor: Colors.transparent,
-      skipTaskbar: true,
+      skipTaskbar: false, // Changed to false so it shows in taskbar when visible
       titleBarStyle: TitleBarStyle.normal,
       alwaysOnTop: true,
     );
@@ -39,6 +102,8 @@ void main() async {
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setAlwaysOnTop(true);
+      // Prevent window from closing - will be handled by onWindowClose
+      await windowManager.setPreventClose(true);
       // Set minimum window size
       await windowManager.setMinimumSize(const Size(800, 600));
       // Restore saved window size
@@ -49,6 +114,9 @@ void main() async {
       await AppearanceService.applySettings();
       await windowManager.show();
       await windowManager.focus();
+      
+      // Initialize system tray
+      await initSystemTray();
       
       // Set initial title bar theme after window is shown to prevent blinking
       // This will be called after ThemeProvider loads the saved theme

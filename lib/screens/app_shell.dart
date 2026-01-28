@@ -42,6 +42,23 @@ class _AppShellState extends State<AppShell> with WindowListener {
   }
 
   @override
+  Future<bool> onWindowClose() async {
+    // Minimize to tray instead of closing
+    if (Platform.isWindows) {
+      print('[AppShell] Window close requested - hiding to tray');
+      try {
+        await windowManager.hide();
+        print('[AppShell] Window hidden to tray');
+        return true; // Prevent window from closing
+      } catch (e) {
+        print('[AppShell] Error hiding window: $e');
+        return false; // Allow close if hide fails
+      }
+    }
+    return false; // Allow normal close on other platforms
+  }
+
+  @override
   void onWindowResize() async {
     // Save window size when it's resized
     if (Platform.isWindows) {

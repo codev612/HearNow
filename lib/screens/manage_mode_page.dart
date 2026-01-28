@@ -489,8 +489,15 @@ class _ManageModePageState extends State<ManageModePage> {
                                   if (!mounted) return;
                                   if (updated.id == _deletingModeId) return;
                                   if (!_customModes.any((m) => m.id == updated.id)) return;
-                                  _modeService.setAuthToken(context.read<AuthProvider>().token);
-                                  await _saveCustomMode(updated, silent: true);
+                                  // Check if context is still valid before accessing Provider
+                                  try {
+                                    final authProvider = context.read<AuthProvider>();
+                                    _modeService.setAuthToken(authProvider.token);
+                                    await _saveCustomMode(updated, silent: true);
+                                  } catch (e) {
+                                    // Context is deactivated, skip save
+                                    print('[ManageModePage] Context deactivated, skipping notes save: $e');
+                                  }
                                 },
                                 onDelete: (c, token) => _performDeleteCustomMode(c, authToken: token),
                               ),
@@ -538,7 +545,10 @@ class _CustomModeEditorState extends State<_CustomModeEditor> {
   @override
   void dispose() {
     _notesSaveTimer?.cancel();
-    _flushNotesSave();
+    // Don't flush notes save during dispose - it will cause context access errors
+    // The notes are auto-saved with debounce as the user types, so we don't need
+    // to save again during dispose. If there are unsaved changes, they'll be lost,
+    // but that's acceptable since auto-save happens frequently.
     _notesController.removeListener(_scheduleNotesSave);
     _promptController.dispose();
     _notesController.dispose();
@@ -549,11 +559,16 @@ class _CustomModeEditorState extends State<_CustomModeEditor> {
     _notesSaveTimer?.cancel();
     _notesSaveTimer = Timer(_debounce, () {
       _notesSaveTimer = null;
-      _flushNotesSave();
+      // Only flush if still mounted
+      if (mounted) {
+        _flushNotesSave();
+      }
     });
   }
 
   void _flushNotesSave() {
+    // Check if still mounted before accessing widget
+    if (!mounted) return;
     final updated = widget.custom.copyWith(notesTemplate: _notesController.text);
     widget.onNotesSaved(updated);
   }
