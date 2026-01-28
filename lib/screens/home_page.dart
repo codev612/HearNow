@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/meeting_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/speech_to_text_provider.dart';
 import '../models/meeting_session.dart';
 
 class _HoverableListTile extends StatefulWidget {
@@ -228,39 +229,60 @@ class _HoverableListTileState extends State<_HoverableListTile> {
         ),
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Text(
-                  widget.session.title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+          title: Consumer<SpeechToTextProvider>(
+            builder: (context, speechProvider, _) {
+              final currentSession = widget.provider.currentSession;
+              final isCurrentSession = currentSession != null && 
+                  currentSession.id == widget.session.id;
+              final isRecording = speechProvider.isRecording;
+              
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.access_time,
-                    size: 16,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${widget.formatTime(widget.session.createdAt)} • ${widget.formatDuration(widget.session.duration)}',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.session.title,
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.onSurface,
+                                ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                        if (isCurrentSession) ...[
+                          const SizedBox(width: 8),
+                          _AnimatedSessionBadge(
+                            isRecording: isRecording,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${widget.formatTime(widget.session.createdAt)} • ${widget.formatDuration(widget.session.duration)}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
+              );
+            },
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -512,8 +534,28 @@ class _HomePageState extends State<HomePage> {
       final meetingProvider = context.read<MeetingProvider>();
       // Ensure auth token is set before loading sessions
       meetingProvider.updateAuthToken(authProvider.token);
-      meetingProvider.loadSessions();
+      meetingProvider.loadSessions(); // Load all sessions (no pagination for homepage)
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload sessions when navigating back to this page
+    // This ensures newly saved sessions appear immediately
+    // Use a flag to prevent multiple reloads
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final meetingProvider = context.read<MeetingProvider>();
+        // Only reload if we have an auth token (user is logged in)
+        final authProvider = context.read<AuthProvider>();
+        if (authProvider.token != null && authProvider.token!.isNotEmpty) {
+          // Reload all sessions (no pagination for homepage)
+          meetingProvider.loadSessions();
+        }
+      });
+    }
   }
 
   String _formatDate(DateTime date) {
@@ -719,31 +761,137 @@ class _HomePageState extends State<HomePage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                Icons.event_note_outlined,
+                                Icons.meeting_room_outlined,
                                 size: 64,
-                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                'No saved meetings',
-                                style: Theme.of(context).textTheme.titleMedium,
+                                'No meetings yet',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                                    ),
                               ),
                               const SizedBox(height: 8),
-          Text(
-                                'Start a meeting to see it here',
+                              Text(
+                                'Start your first meeting to get started',
                                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                                     ),
                               ),
                             ],
                           ),
                         )
                       : _buildSessionsList(grouped, dateKeys, provider),
-          ),
-        ],
-      ),
-        );
+            ),
+          ],
+        ),
+      );
       },
+    );
+  }
+}
+
+// Animated badge widget for showing session status
+class _AnimatedSessionBadge extends StatefulWidget {
+  final bool isRecording;
+
+  const _AnimatedSessionBadge({
+    required this.isRecording,
+  });
+
+  @override
+  State<_AnimatedSessionBadge> createState() => _AnimatedSessionBadgeState();
+}
+
+class _AnimatedSessionBadgeState extends State<_AnimatedSessionBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.2,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+
+    _opacityAnimation = Tween<double>(
+      begin: 0.6,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedSessionBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isRecording != oldWidget.isRecording) {
+      if (widget.isRecording) {
+        _controller.repeat(reverse: true);
+      } else {
+        _controller.stop();
+        _controller.reset();
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final badgeColor = widget.isRecording
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: badgeColor,
+        shape: BoxShape.circle,
+      ),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          if (widget.isRecording) {
+            // Animated pulsing microphone icon when recording
+            return Transform.scale(
+              scale: _scaleAnimation.value,
+              child: Opacity(
+                opacity: _opacityAnimation.value,
+                child: Icon(
+                  Icons.mic,
+                  size: 18,
+                  color: Colors.white,
+                ),
+              ),
+            );
+          } else {
+            // Static microphone icon when in progress but not recording
+            return Icon(
+              Icons.mic_outlined,
+              size: 18,
+              color: Colors.white,
+            );
+          }
+        },
+      ),
     );
   }
 }

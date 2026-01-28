@@ -123,8 +123,24 @@ app.post('/api/sessions', authenticate, async (req: AuthRequest, res: Response) 
 app.get('/api/sessions', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
-    const sessions = await listMeetingSessions(userId);
-    res.json(sessions);
+    
+    // Parse pagination and search parameters
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+    const skip = req.query.skip ? parseInt(req.query.skip as string, 10) : undefined;
+    const search = req.query.search as string | undefined;
+    
+    const result = await listMeetingSessions(userId, {
+      limit,
+      skip,
+      search,
+    });
+    
+    res.json({
+      sessions: result.sessions,
+      total: result.total,
+      limit: limit,
+      skip: skip,
+    });
   } catch (error: any) {
     console.error('Error listing sessions:', error);
     res.status(500).json({ error: error.message || 'Failed to list sessions' });

@@ -2340,6 +2340,110 @@ class _SaveSessionIntent extends Intent {
   const _SaveSessionIntent();
 }
 
+// Animated badge widget for showing session status
+class _AnimatedSessionBadge extends StatefulWidget {
+  final bool isRecording;
+
+  const _AnimatedSessionBadge({
+    required this.isRecording,
+  });
+
+  @override
+  State<_AnimatedSessionBadge> createState() => _AnimatedSessionBadgeState();
+}
+
+class _AnimatedSessionBadgeState extends State<_AnimatedSessionBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    )..repeat(reverse: true);
+
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.2,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+
+    _opacityAnimation = Tween<double>(
+      begin: 0.6,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedSessionBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isRecording != oldWidget.isRecording) {
+      if (widget.isRecording) {
+        _controller.repeat(reverse: true);
+      } else {
+        _controller.stop();
+        _controller.reset();
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final badgeColor = widget.isRecording
+        ? Theme.of(context).colorScheme.error
+        : Theme.of(context).colorScheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: badgeColor,
+        shape: BoxShape.circle,
+      ),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          if (widget.isRecording) {
+            // Animated pulsing microphone icon when recording
+            return Transform.scale(
+              scale: _scaleAnimation.value,
+              child: Opacity(
+                opacity: _opacityAnimation.value,
+                child: Icon(
+                  Icons.mic,
+                  size: 18,
+                  color: Colors.white,
+                ),
+              ),
+            );
+          } else {
+            // Static microphone icon when in progress but not recording
+            return Icon(
+              Icons.mic_outlined,
+              size: 18,
+              color: Colors.white,
+            );
+          }
+        },
+      ),
+    );
+  }
+}
+
 class _ExportIntent extends Intent {
   const _ExportIntent();
 }
@@ -2357,16 +2461,93 @@ class SessionsListPage extends StatefulWidget {
 }
 
 class _SessionsListPageState extends State<SessionsListPage> {
+  final TextEditingController _searchController = TextEditingController();
+  final int _itemsPerPage = 20;
+  int _currentPage = 0;
+  int _totalSessions = 0;
+  String _searchQuery = '';
+  Timer? _searchDebounceTimer;
+
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(_onSearchChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = context.read<AuthProvider>();
       final meetingProvider = context.read<MeetingProvider>();
       // Ensure auth token is set before loading sessions
       meetingProvider.updateAuthToken(authProvider.token);
-      meetingProvider.loadSessions();
+      _loadSessions();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload sessions when navigating back to this page
+    // This ensures newly saved sessions appear immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final meetingProvider = context.read<MeetingProvider>();
+      // Only reload if we have an auth token (user is logged in)
+      final authProvider = context.read<AuthProvider>();
+      if (authProvider.token != null && authProvider.token!.isNotEmpty) {
+        _loadSessions();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _searchDebounceTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    // Debounce search to avoid too many API calls
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        setState(() {
+          _searchQuery = _searchController.text.trim();
+          _currentPage = 0; // Reset to first page when searching
+        });
+        _loadSessions();
+      }
+    });
+  }
+
+  Future<void> _loadSessions() async {
+    final meetingProvider = context.read<MeetingProvider>();
+    final skip = _currentPage * _itemsPerPage;
+    
+    // Load sessions with pagination and search
+    await meetingProvider.loadSessions(
+      limit: _itemsPerPage,
+      skip: skip,
+      search: _searchQuery.isNotEmpty ? _searchQuery : null,
+    );
+    
+    // Get total count for pagination
+    if (mounted) {
+      final total = await meetingProvider.getSessionsCount(
+        search: _searchQuery.isNotEmpty ? _searchQuery : null,
+      );
+      setState(() {
+        _totalSessions = total;
+      });
+    }
+  }
+
+  void _goToPage(int page) {
+    final totalPages = (_totalSessions / _itemsPerPage).ceil();
+    if (page >= 0 && page < totalPages) {
+      setState(() {
+        _currentPage = page;
+      });
+      _loadSessions();
+    }
   }
 
   String _formatDuration(Duration duration) {
@@ -2380,97 +2561,212 @@ class _SessionsListPageState extends State<SessionsListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final totalPages = _totalSessions > 0 ? (_totalSessions / _itemsPerPage).ceil() : 0;
+    final hasNextPage = _currentPage < totalPages - 1;
+    final hasPrevPage = _currentPage > 0;
+    final startItem = _currentPage * _itemsPerPage + 1;
+    final endItem = (_currentPage + 1) * _itemsPerPage;
+    final actualEndItem = endItem > _totalSessions ? _totalSessions : endItem;
+
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
         title: const Text('Meeting Sessions'),
       ),
-      body: Container(
-        color: Theme.of(context).colorScheme.surface,
-        child: Consumer<MeetingProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading && provider.sessions.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (provider.sessions.isEmpty) {
-            return const Center(
-              child: Text('No saved sessions'),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: provider.sessions.length,
-            itemBuilder: (context, index) {
-              final session = provider.sessions[index];
-              return ListTile(
-                title: Text(session.title),
-                subtitle: Text(
-                  '${session.createdAt.toLocal().toString().substring(0, 16)} • ${_formatDuration(session.duration)}',
+      body: Column(
+        children: [
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search sessions by title...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.download),
-                      tooltip: 'Export',
-                      onPressed: () async {
-                        try {
-                          final text = await provider.exportSessionAsText(session.id);
-                          await Clipboard.setData(ClipboardData(text: text));
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Exported to clipboard')),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Export failed: $e')),
-                            );
-                          }
-                        }
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      tooltip: 'Delete',
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Delete Session?'),
-                            content: Text('Delete "${session.title}"?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text('Delete'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirmed == true && mounted) {
-                          await provider.deleteSession(session.id);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                onTap: () async {
-                  await provider.loadSession(session.id);
-                  if (mounted) {
-                    Navigator.pop(context);
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              ),
+            ),
+          ),
+          // Sessions list
+          Expanded(
+            child: Container(
+              color: Theme.of(context).colorScheme.surface,
+              child: Consumer<MeetingProvider>(
+                builder: (context, provider, child) {
+                  if (provider.isLoading && provider.sessions.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
                   }
+
+                  if (provider.sessions.isEmpty) {
+                    return Center(
+                      child: Text(
+                        _searchQuery.isNotEmpty
+                            ? 'No sessions found matching "$_searchQuery"'
+                            : 'No saved sessions',
+                      ),
+                    );
+                  }
+
+                  return RefreshIndicator(
+                    onRefresh: _loadSessions,
+                    child: Consumer<SpeechToTextProvider>(
+                      builder: (context, speechProvider, _) {
+                        final currentSession = provider.currentSession;
+                        final isRecording = speechProvider.isRecording;
+                        
+                        return ListView.builder(
+                          itemCount: provider.sessions.length,
+                          itemBuilder: (context, index) {
+                            final session = provider.sessions[index];
+                            final isCurrentSession = currentSession != null && 
+                                currentSession.id == session.id;
+                            
+                            return ListTile(
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(session.title),
+                                  ),
+                                  if (isCurrentSession) ...[
+                                    const SizedBox(width: 8),
+                                    _AnimatedSessionBadge(
+                                      isRecording: isRecording,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              subtitle: Text(
+                                '${session.createdAt.toLocal().toString().substring(0, 16)} • ${_formatDuration(session.duration)}',
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.download),
+                                    tooltip: 'Export',
+                                    onPressed: () async {
+                                      try {
+                                        final text = await provider.exportSessionAsText(session.id);
+                                        await Clipboard.setData(ClipboardData(text: text));
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Exported to clipboard')),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Export failed: $e')),
+                                          );
+                                        }
+                                      }
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    tooltip: 'Delete',
+                                    onPressed: () async {
+                                      final confirmed = await showDialog<bool>(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: const Text('Delete Session?'),
+                                          content: Text('Delete "${session.title}"?'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context, true),
+                                              child: const Text('Delete'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirmed == true && mounted) {
+                                        await provider.deleteSession(session.id);
+                                        _loadSessions(); // Reload to update pagination
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              onTap: () async {
+                                await provider.loadSession(session.id);
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                }
+                              },
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  );
                 },
-              );
-            },
-          );
-        },
-      ),
+              ),
+            ),
+          ),
+          // Pagination controls
+          if (totalPages > 1)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+                  ),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Page info
+                  Text(
+                    _totalSessions > 0
+                        ? 'Showing $startItem-$actualEndItem of $_totalSessions'
+                        : 'No sessions',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  // Pagination buttons
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.chevron_left),
+                        onPressed: hasPrevPage ? () => _goToPage(_currentPage - 1) : null,
+                        tooltip: 'Previous page',
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          'Page ${_currentPage + 1} of $totalPages',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right),
+                        onPressed: hasNextPage ? () => _goToPage(_currentPage + 1) : null,
+                        tooltip: 'Next page',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

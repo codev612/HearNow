@@ -192,6 +192,12 @@ class _AppShellState extends State<AppShell> with WindowListener {
           return BottomNavigationBar(
             currentIndex: _index,
             onTap: (i) async {
+              // If clicking Home tab (index 0), reload sessions to show newly saved ones
+              if (i == 0 && _index != 0) {
+                final meetingProvider = context.read<MeetingProvider>();
+                // Reload all sessions (no pagination for homepage)
+                meetingProvider.loadSessions();
+              }
               // If clicking Meeting tab (index 1) and no current session, start a new meeting
               if (i == 1) {
                 final meetingProvider = context.read<MeetingProvider>();

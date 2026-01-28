@@ -671,13 +671,42 @@ export const updateMeetingSession = async (
   return result.matchedCount > 0;
 };
 
-export const listMeetingSessions = async (userId: string): Promise<any[]> => {
+export const listMeetingSessions = async (
+  userId: string,
+  options?: {
+    limit?: number;
+    skip?: number;
+    search?: string;
+  }
+): Promise<{ sessions: any[]; total: number }> => {
   const collection = getSessionsCollection();
-  const sessions = await collection
-    .find({ userId })
-    .sort({ updatedAt: -1, createdAt: -1 })
-    .toArray();
-  return sessions.map((s) => formatSessionForApi(s));
+  
+  // Build query filter
+  const filter: any = { userId };
+  if (options?.search) {
+    // Search in title (case-insensitive)
+    filter.title = { $regex: options.search, $options: 'i' };
+  }
+  
+  // Get total count for pagination
+  const total = await collection.countDocuments(filter);
+  
+  // Build query with pagination
+  let query = collection.find(filter).sort({ updatedAt: -1, createdAt: -1 });
+  
+  if (options?.skip !== undefined) {
+    query = query.skip(options.skip);
+  }
+  
+  if (options?.limit !== undefined) {
+    query = query.limit(options.limit);
+  }
+  
+  const sessions = await query.toArray();
+  return {
+    sessions: sessions.map((s) => formatSessionForApi(s)),
+    total,
+  };
 };
 
 export const deleteMeetingSession = async (sessionId: string, userId: string): Promise<boolean> => {

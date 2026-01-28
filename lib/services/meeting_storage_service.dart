@@ -112,15 +112,26 @@ class MeetingStorageService {
     }
   }
 
-  Future<List<MeetingSession>> listSessions() async {
+  Future<List<MeetingSession>> listSessions({
+    int? limit,
+    int? skip,
+    String? search,
+  }) async {
     try {
       if (_authToken == null || _authToken!.isEmpty) {
         throw Exception('No token provided');
       }
       
-      final url = _getApiUrl('/api/sessions');
+      final uri = Uri.parse(_getApiUrl('/api/sessions')).replace(
+        queryParameters: {
+          if (limit != null) 'limit': limit.toString(),
+          if (skip != null) 'skip': skip.toString(),
+          if (search != null && search.isNotEmpty) 'search': search,
+        },
+      );
+      
       final response = await http.get(
-        Uri.parse(url),
+        uri,
         headers: _getHeaders(),
       );
 
@@ -133,12 +144,47 @@ class MeetingStorageService {
         throw Exception(error);
       }
 
-      final data = jsonDecode(response.body) as List<dynamic>;
-      return data
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final sessionsList = data['sessions'] as List<dynamic>;
+      return sessionsList
           .map((item) => MeetingSession.fromJson(item as Map<String, dynamic>))
           .toList();
     } catch (e) {
       throw Exception('Failed to list sessions: $e');
+    }
+  }
+  
+  Future<int> getSessionsCount({String? search}) async {
+    try {
+      if (_authToken == null || _authToken!.isEmpty) {
+        throw Exception('No token provided');
+      }
+      
+      final uri = Uri.parse(_getApiUrl('/api/sessions')).replace(
+        queryParameters: {
+          'limit': '1', // Just need count, so limit to 1
+          if (search != null && search.isNotEmpty) 'search': search,
+        },
+      );
+      
+      final response = await http.get(
+        uri,
+        headers: _getHeaders(),
+      );
+
+      if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please sign in again.');
+      }
+
+      if (response.statusCode != 200) {
+        final error = jsonDecode(response.body)['error'] ?? 'Failed to get sessions count';
+        throw Exception(error);
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['total'] as int? ?? 0;
+    } catch (e) {
+      throw Exception('Failed to get sessions count: $e');
     }
   }
 

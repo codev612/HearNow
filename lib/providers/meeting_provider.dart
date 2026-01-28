@@ -153,18 +153,35 @@ class MeetingProvider extends ChangeNotifier {
     return const <Map<String, dynamic>>[];
   }
 
-  Future<void> loadSessions() async {
+  Future<void> loadSessions({
+    int? limit,
+    int? skip,
+    String? search,
+  }) async {
     _isLoading = true;
     _errorMessage = '';
     notifyListeners();
 
     try {
-      _sessions = await _storage.listSessions();
+      _sessions = await _storage.listSessions(
+        limit: limit,
+        skip: skip,
+        search: search,
+      );
     } catch (e) {
       _errorMessage = 'Failed to load sessions: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+  
+  Future<int> getSessionsCount({String? search}) async {
+    try {
+      return await _storage.getSessionsCount(search: search);
+    } catch (e) {
+      print('Error getting sessions count: $e');
+      return 0;
     }
   }
 
@@ -244,7 +261,8 @@ class MeetingProvider extends ChangeNotifier {
       if (savedSession.id != null) {
         await _saveCurrentSessionId(savedSession.id!);
       }
-      await loadSessions();
+      // Reload all sessions (no pagination) to ensure the newly saved session appears
+      await loadSessions(); // No parameters = load all sessions
     } catch (e) {
       _errorMessage = 'Failed to save session: $e';
     } finally {
