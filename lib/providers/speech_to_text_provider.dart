@@ -42,8 +42,15 @@ class SpeechToTextProvider extends ChangeNotifier {
   String _aiResponse = '';
   String _aiErrorMessage = '';
   bool _isAiLoading = false;
+  
+  // Auto ask callback - called when a question is detected from others
+  Function(String)? _onQuestionDetected;
 
   bool get isRecording => _isRecording;
+  
+  void setAutoAskCallback(Function(String)? callback) {
+    _onQuestionDetected = callback;
+  }
   bool get isConnected => _isConnected;
   bool get isStopping => _isStopping;
   bool get useMic => _useMic;
@@ -144,6 +151,29 @@ class SpeechToTextProvider extends ChangeNotifier {
     return false;
   }
 
+  bool _isQuestion(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return false;
+    
+    // Check if text ends with question mark
+    if (trimmed.endsWith('?')) return true;
+    
+    // Check for common question patterns
+    final questionPatterns = [
+      RegExp(r'^(what|who|where|when|why|how|which|whose|whom)\s', caseSensitive: false),
+      RegExp(r'\?$'),
+      RegExp(r'^(can|could|would|should|will|do|does|did|is|are|was|were|have|has|had)\s', caseSensitive: false),
+    ];
+    
+    for (final pattern in questionPatterns) {
+      if (pattern.hasMatch(trimmed)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   void _upsertFinalBubble({required TranscriptSource source, required String text}) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
@@ -190,27 +220,69 @@ class SpeechToTextProvider extends ChangeNotifier {
     if (_bubbles.isNotEmpty && _bubbles.last.source == source) {
       // If the last bubble is a draft, finalize it in-place.
       if (_bubbles.last.isDraft) {
+        final finalText = trimmed;
         _bubbles[_bubbles.length - 1] = _bubbles.last.copyWith(
-          text: trimmed,
+          text: finalText,
           isDraft: false,
           timestamp: DateTime.now(),
         );
+        // Check if finalized text is a question from system source (others asking)
+        if (source == TranscriptSource.system && 
+            _onQuestionDetected != null && 
+            _isQuestion(finalText) &&
+            !_isAiLoading) {
+          print('[SpeechToTextProvider] Question detected in finalized draft: "$finalText" - triggering auto ask');
+          Future.microtask(() {
+            if (!_isDisposed && _onQuestionDetected != null) {
+              _onQuestionDetected!('What should I say?');
+            }
+          });
+        }
         return;
       }
 
       final merged = _appendWithOverlap(_bubbles.last.text, trimmed);
+      final previousText = _bubbles.last.text;
       _bubbles[_bubbles.length - 1] = _bubbles.last.copyWith(text: merged);
+      
+      // Check if merged text is a question from system source (others asking)
+      // Only trigger if question wasn't already in the previous text
+      if (source == TranscriptSource.system && 
+          _onQuestionDetected != null && 
+          _isQuestion(merged) &&
+          !_isAiLoading &&
+          !_isQuestion(previousText)) {
+        print('[SpeechToTextProvider] Question detected in merged text: "$merged" - triggering auto ask');
+        Future.microtask(() {
+          if (!_isDisposed && _onQuestionDetected != null) {
+            _onQuestionDetected!('What should I say?');
+          }
+        });
+      }
       return;
     }
 
-    _bubbles.add(
-      TranscriptBubble(
-        source: source,
-        text: trimmed,
-        timestamp: DateTime.now(),
-        isDraft: false,
-      ),
+    // New bubble - check if it's a question from system source
+    final newBubble = TranscriptBubble(
+      source: source,
+      text: trimmed,
+      timestamp: DateTime.now(),
+      isDraft: false,
     );
+    _bubbles.add(newBubble);
+    
+    // Check if new bubble is a question from system source (others asking)
+    if (source == TranscriptSource.system && 
+        _onQuestionDetected != null && 
+        _isQuestion(trimmed) &&
+        !_isAiLoading) {
+      print('[SpeechToTextProvider] Question detected in new bubble: "$trimmed" - triggering auto ask');
+      Future.microtask(() {
+        if (!_isDisposed && _onQuestionDetected != null) {
+          _onQuestionDetected!('What should I say?');
+        }
+      });
+    }
   }
 
   void _upsertDraftBubble({required TranscriptSource source, required String text}) {

@@ -113,6 +113,9 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
       // Sync bubbles to meeting session
       _speechProvider!.addListener(_syncBubblesToSession);
       
+      // Set up auto ask callback
+      _updateAutoAskCallback();
+      
       // Load question templates
       _loadQuestionTemplates();
       
@@ -678,6 +681,21 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     final systemPrompt = await _getRealTimePrompt();
     _speechProvider!.askAi(question: question, systemPrompt: systemPrompt);
   }
+  
+  void _updateAutoAskCallback() {
+    if (_speechProvider == null) return;
+    if (_autoAsk) {
+      // Set callback to auto-ask when question is detected
+      _speechProvider!.setAutoAskCallback((question) {
+        if (mounted && !_speechProvider!.isAiLoading) {
+          _askAiWithPrompt(question);
+        }
+      });
+    } else {
+      // Remove callback when auto ask is disabled
+      _speechProvider!.setAutoAskCallback(null);
+    }
+  }
 
   void _askQuestionFromTemplate(String question) {
     if (_speechProvider != null && !_speechProvider!.isAiLoading) {
@@ -978,7 +996,10 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
               // Auto Ask checkbox
               Checkbox(
                 value: _autoAsk,
-                onChanged: (value) => setState(() => _autoAsk = value ?? false),
+                onChanged: (value) {
+                  setState(() => _autoAsk = value ?? false);
+                  _updateAutoAskCallback();
+                },
                 visualDensity: VisualDensity.compact,
               ),
               Text('Auto Ask', style: TextStyle(
@@ -1521,7 +1542,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                 tooltip: 'Ask (Ctrl+Enter)',
                 onPressed: speechProvider.isAiLoading
                     ? null
-                    : () => speechProvider.askAi(question: _askAiController.text),
+                    : () => _askAiWithPrompt(_askAiController.text),
                 icon: speechProvider.isAiLoading
                     ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.auto_awesome),
