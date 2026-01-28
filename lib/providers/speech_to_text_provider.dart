@@ -45,6 +45,7 @@ class SpeechToTextProvider extends ChangeNotifier {
 
   bool get isRecording => _isRecording;
   bool get isConnected => _isConnected;
+  bool get isStopping => _isStopping;
   bool get useMic => _useMic;
   List<TranscriptBubble> get bubbles => List.unmodifiable(_bubbles);
   String get errorMessage => _errorMessage;
@@ -860,9 +861,6 @@ class SpeechToTextProvider extends ChangeNotifier {
         print('[SpeechToTextProvider] Error canceling system audio poll timer: $e');
       }
       
-      // Give callbacks time to see the flags and stop processing
-      await Future.delayed(const Duration(milliseconds: 100));
-      
       // STEP 3: Cancel transcript subscription to stop processing incoming messages
       try {
         _transcriptSubscription?.cancel();
@@ -871,63 +869,73 @@ class SpeechToTextProvider extends ChangeNotifier {
         print('[SpeechToTextProvider] Error canceling transcript subscription: $e');
       }
       
-      // STEP 4: Stop audio capture services (mic first, then system)
-      try {
-        await _audioCaptureService?.stopCapturing();
-      } catch (e) {
-        print('[SpeechToTextProvider] Error stopping audio capture: $e');
-      }
-      
-      // Stop system audio capture (native Windows service)
-      if (!kIsWeb && Platform.isWindows && _isSystemAudioCapturing) {
-        try {
-          await WindowsAudioService.stopSystemAudioCapture();
-        } catch (e) {
-          print('[SpeechToTextProvider] Error stopping system audio capture: $e');
-        }
-      }
-      _isSystemAudioCapturing = false;
-      
-      // Wait for audio services to fully stop
-      await Future.delayed(const Duration(milliseconds: 100));
-      
-      // STEP 5: Dispose audio capture service
-      try {
-        _audioCaptureService?.dispose();
-      } catch (e) {
-        print('[SpeechToTextProvider] Error disposing audio capture service: $e');
-      }
-      _audioCaptureService = null;
-      
-      // STEP 6: Disconnect from transcription service (WebSocket)
-      // Do this last after all audio is stopped
-      try {
-        _transcriptionService?.disconnect();
-        // Wait for WebSocket to close
-        await Future.delayed(const Duration(milliseconds: 100));
-      } catch (e) {
-        print('[SpeechToTextProvider] Error disconnecting transcription service: $e');
-      }
-      
-      // STEP 7: Reset all state
+      // STEP 4: Reset state immediately
       _lastSystemFinalTime = null;
       _recentSystemTranscripts.clear();
       _recordingStartTime = null;
+      
+      // Notify listeners IMMEDIATELY so UI updates right away (button changes to resume/start)
+      if (!_isDisposed) {
+        try {
+          notifyListeners();
+        } catch (e) {
+          print('[SpeechToTextProvider] Error in notifyListeners (immediate): $e');
+        }
+      }
+      
       print('[SpeechToTextProvider] Recording stopped. Processed $_audioFrameCount audio frames');
       
-      // Final state update - defer to next frame to avoid crashes during rebuild
-      // Use a longer delay to ensure everything is settled
-      if (!_isDisposed) {
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (!_isDisposed && !_isStopping) {
+      // STEP 5: Do cleanup in background (non-blocking)
+      // This allows UI to remain responsive while cleanup happens
+      Future.microtask(() async {
+        try {
+          // Stop audio capture services (mic first, then system)
+          try {
+            await _audioCaptureService?.stopCapturing();
+          } catch (e) {
+            print('[SpeechToTextProvider] Error stopping audio capture: $e');
+          }
+          
+          // Stop system audio capture (native Windows service)
+          if (!kIsWeb && Platform.isWindows && _isSystemAudioCapturing) {
+            try {
+              await WindowsAudioService.stopSystemAudioCapture();
+            } catch (e) {
+              print('[SpeechToTextProvider] Error stopping system audio capture: $e');
+            }
+          }
+          _isSystemAudioCapturing = false;
+          
+          // Dispose audio capture service
+          try {
+            _audioCaptureService?.dispose();
+          } catch (e) {
+            print('[SpeechToTextProvider] Error disposing audio capture service: $e');
+          }
+          _audioCaptureService = null;
+          
+          // Disconnect from transcription service (WebSocket)
+          // Do this last after all audio is stopped
+          try {
+            _transcriptionService?.disconnect();
+          } catch (e) {
+            print('[SpeechToTextProvider] Error disconnecting transcription service: $e');
+          }
+        } catch (e) {
+          print('[SpeechToTextProvider] Error in background cleanup: $e');
+        } finally {
+          // Reset stopping flag after cleanup completes
+          _isStopping = false;
+          // Notify listeners one more time to update UI (remove loading state)
+          if (!_isDisposed) {
             try {
               notifyListeners();
             } catch (e) {
-              print('[SpeechToTextProvider] Error in notifyListeners (deferred): $e');
+              print('[SpeechToTextProvider] Error in notifyListeners (after cleanup): $e');
             }
           }
-        });
-      }
+        }
+      });
     } catch (e, stackTrace) {
       _errorMessage = 'Failed to stop recording: $e';
       print('[SpeechToTextProvider] Error stopping: $e');
@@ -935,24 +943,45 @@ class SpeechToTextProvider extends ChangeNotifier {
       // Ensure state is reset even on error
       _isRecording = false;
       _isConnected = false;
+      
+      // Still do cleanup even on error
+      Future.microtask(() async {
+        try {
+          // Try to clean up as much as possible
+          try {
+            await _audioCaptureService?.stopCapturing();
+          } catch (_) {}
+          try {
+            _audioCaptureService?.dispose();
+          } catch (_) {}
+          _audioCaptureService = null;
+          if (!kIsWeb && Platform.isWindows && _isSystemAudioCapturing) {
+            try {
+              await WindowsAudioService.stopSystemAudioCapture();
+            } catch (_) {}
+          }
+          _isSystemAudioCapturing = false;
+          try {
+            _transcriptionService?.disconnect();
+          } catch (_) {}
+        } finally {
+          _isStopping = false;
+          if (!_isDisposed) {
+            try {
+              notifyListeners();
+            } catch (_) {}
+          }
+        }
+      });
+      
       if (!_isDisposed) {
         try {
-          // Defer notification to avoid crashes during error handling
-          Future.microtask(() {
-            if (!_isDisposed && !_isStopping) {
-              try {
-                notifyListeners();
-              } catch (notifyError) {
-                print('[SpeechToTextProvider] Error in notifyListeners (error handler, deferred): $notifyError');
-              }
-            }
-          });
-        } catch (e) {
-          print('[SpeechToTextProvider] Error scheduling notifyListeners (error handler): $e');
+          // Notify immediately about the error state
+          notifyListeners();
+        } catch (notifyError) {
+          print('[SpeechToTextProvider] Error in notifyListeners (error handler): $notifyError');
         }
       }
-    } finally {
-      _isStopping = false;
     }
   }
 

@@ -1040,57 +1040,57 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                           children: [
                             if (isRec)
                               IconButton.outlined(
-                                onPressed: () async {
-                                  if (!mounted) return;
-                                  
-                                  // Stop recording first, then sync bubbles after
-                                  // This prevents race conditions between stop and sync
-                                  if (!mounted) return;
-                                  try {
-                                    // Wait for any in-flight operations to complete before stopping
-                                    await Future.delayed(const Duration(milliseconds: 100));
-                                    
-                                    if (!mounted) return;
-                                    await speechProvider.stopRecording();
-                                    
-                                    // Wait a bit more for WebSocket/database operations to settle
-                                    await Future.delayed(const Duration(milliseconds: 300));
-                                    
-                                    // Sync bubbles AFTER stopping (deferred to avoid crashes)
-                                    if (mounted && _meetingProvider?.currentSession != null && _speechProvider != null) {
-                                      // Defer sync to next frame to avoid interfering with stop cleanup
-                                      Future.microtask(() async {
+                                onPressed: speechProvider.isStopping
+                                    ? null
+                                    : () async {
+                                        if (!mounted) return;
+                                        
+                                        // Stop recording - non-blocking for UI responsiveness
                                         if (!mounted) return;
                                         try {
-                                          _isUpdatingBubbles = true;
-                                          final currentBubbles = _speechProvider!.bubbles;
-                                          if (currentBubbles.isNotEmpty && mounted) {
-                                            try {
-                                              _meetingProvider!.updateCurrentSessionBubbles(currentBubbles);
-                                            } catch (syncError) {
-                                              debugPrint('Error syncing bubbles after stop: $syncError');
+                                          // Start stop operation (non-blocking)
+                                          speechProvider.stopRecording().catchError((error, stackTrace) {
+                                            debugPrint('Error stopping recording: $error');
+                                            debugPrint('Stack trace: $stackTrace');
+                                          });
+                                          
+                                          // Sync bubbles AFTER stopping (deferred to avoid crashes)
+                                          // Use a small delay to let stop flags be set first
+                                          Future.delayed(const Duration(milliseconds: 200), () {
+                                            if (!mounted) return;
+                                            if (_meetingProvider?.currentSession != null && _speechProvider != null) {
+                                              try {
+                                                _isUpdatingBubbles = true;
+                                                final currentBubbles = _speechProvider!.bubbles;
+                                                if (currentBubbles.isNotEmpty && mounted) {
+                                                  try {
+                                                    _meetingProvider!.updateCurrentSessionBubbles(currentBubbles);
+                                                  } catch (syncError) {
+                                                    debugPrint('Error syncing bubbles after stop: $syncError');
+                                                  }
+                                                }
+                                              } catch (e) {
+                                                debugPrint('Error in bubble sync after stop: $e');
+                                              } finally {
+                                                if (mounted) {
+                                                  _isUpdatingBubbles = false;
+                                                }
+                                              }
                                             }
-                                          }
-                                        } catch (e) {
-                                          debugPrint('Error in bubble sync after stop: $e');
-                                        } finally {
-                                          if (mounted) {
-                                            _isUpdatingBubbles = false;
-                                          }
+                                          });
+                                          
+                                          // Don't save automatically - let user save manually to avoid crashes
+                                          // Session is auto-saved periodically anyway
+                                        } catch (e, stackTrace) {
+                                          debugPrint('Error initiating stop: $e');
+                                          debugPrint('Stack trace: $stackTrace');
+                                          // Don't show SnackBar here to avoid context access issues
                                         }
-                                      });
-                                    }
-                                    
-                                    // Don't save automatically - let user save manually to avoid crashes
-                                    // Session is auto-saved periodically anyway
-                                  } catch (e, stackTrace) {
-                                    debugPrint('Error stopping recording: $e');
-                                    debugPrint('Stack trace: $stackTrace');
-                                    // Don't show SnackBar here to avoid context access issues
-                                  }
-                                },
-                                tooltip: 'Stop (Ctrl+R)',
-                                icon: const Icon(Icons.stop),
+                                      },
+                                tooltip: speechProvider.isStopping ? 'Stopping...' : 'Stop (Ctrl+R)',
+                                icon: speechProvider.isStopping
+                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.stop),
                                 style: IconButton.styleFrom(
                                   minimumSize: const Size(dockButtonSize, dockButtonSize),
                                   maximumSize: const Size(dockButtonSize, dockButtonSize),
@@ -1787,26 +1787,22 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
               _ToggleRecordIntent: CallbackAction<_ToggleRecordIntent>(
                 onInvoke: (_) async {
                   if (speechProvider.isRecording) {
-                    if (!mounted) return null;
+                    if (!mounted || speechProvider.isStopping) return null;
                     
-                    // Stop recording first, then sync bubbles after
-                    // This prevents race conditions between stop and sync
+                    // Stop recording - non-blocking for UI responsiveness
                     if (!mounted) return null;
                     try {
-                      // Wait for any in-flight operations to complete before stopping
-                      await Future.delayed(const Duration(milliseconds: 100));
-                      
-                      if (!mounted) return null;
-                      await speechProvider.stopRecording();
-                      
-                      // Wait a bit more for WebSocket/database operations to settle
-                      await Future.delayed(const Duration(milliseconds: 300));
+                      // Start stop operation (non-blocking)
+                      speechProvider.stopRecording().catchError((error, stackTrace) {
+                        debugPrint('Error stopping recording: $error');
+                        debugPrint('Stack trace: $stackTrace');
+                      });
                       
                       // Sync bubbles AFTER stopping (deferred to avoid crashes)
-                      if (mounted && _meetingProvider?.currentSession != null && _speechProvider != null) {
-                        // Defer sync to next frame to avoid interfering with stop cleanup
-                        Future.microtask(() async {
-                          if (!mounted) return;
+                      // Use a small delay to let stop flags be set first
+                      Future.delayed(const Duration(milliseconds: 200), () {
+                        if (!mounted) return;
+                        if (_meetingProvider?.currentSession != null && _speechProvider != null) {
                           try {
                             _isUpdatingBubbles = true;
                             final currentBubbles = _speechProvider!.bubbles;
@@ -1824,13 +1820,13 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                               _isUpdatingBubbles = false;
                             }
                           }
-                        });
-                      }
+                        }
+                      });
                       
                       // Don't save automatically - let user save manually to avoid crashes
                       // Session is auto-saved periodically anyway
                     } catch (e, stackTrace) {
-                      debugPrint('Error stopping recording: $e');
+                      debugPrint('Error initiating stop: $e');
                       debugPrint('Stack trace: $stackTrace');
                       // Don't show SnackBar here to avoid context access issues
                     }
