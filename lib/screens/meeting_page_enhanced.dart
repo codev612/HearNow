@@ -39,7 +39,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   Timer? _recordingTimer;
   DateTime? _recordingStartedAt;
   bool _showMarkers = true;
-  bool _useMic = true;
+  bool _useMic = false;
   bool _autoAsk = false;
   bool _showConversationControls = true;
   bool _showAiControls = true;
@@ -1416,62 +1416,6 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                 style: dockButtonStyle,
                               ),
                               IconButton.outlined(
-                                tooltip: 'Insights (long-press to regenerate)',
-                                onPressed: meetingProvider.isGeneratingInsights
-                                    ? null
-                                    : () async {
-                                        final session = meetingProvider.currentSession;
-                                        // If insights exist, show them directly
-                                        if (session?.insights != null && session!.insights!.isNotEmpty) {
-                                          await _showTextDialog(title: 'Insights', text: session.insights!);
-                                        } else {
-                                          // Generate if doesn't exist
-                                          await meetingProvider.generateInsights();
-                                          final s = meetingProvider.currentSession?.insights ?? '';
-                                          await _showTextDialog(title: 'Insights', text: s);
-                                        }
-                                      },
-                                onLongPress: meetingProvider.isGeneratingInsights
-                                    ? null
-                                    : () async {
-                                        // Force regenerate
-                                        await meetingProvider.generateInsights(regenerate: true);
-                                        final s = meetingProvider.currentSession?.insights ?? '';
-                                        await _showTextDialog(title: 'Insights', text: s);
-                                      },
-                                icon: meetingProvider.isGeneratingInsights
-                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : const Icon(Icons.insights),
-                                style: dockButtonStyle,
-                              ),
-                              IconButton.outlined(
-                                tooltip: 'Questions (long-press to regenerate)',
-                                onPressed: meetingProvider.isGeneratingQuestions
-                                    ? null
-                                    : () async {
-                                        final session = meetingProvider.currentSession;
-                                        // If questions exist, show them directly
-                                        if (session?.questions != null && session!.questions!.isNotEmpty) {
-                                          await _showTextDialog(title: 'Suggested Questions', text: session.questions!);
-                                        } else {
-                                          // Generate if doesn't exist
-                                          await _generateSuggestedQuestions();
-                                          await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
-                                        }
-                                      },
-                                onLongPress: meetingProvider.isGeneratingQuestions
-                                    ? null
-                                    : () async {
-                                        // Force regenerate
-                                        await _generateSuggestedQuestions(regenerate: true);
-                                        await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
-                                      },
-                                icon: meetingProvider.isGeneratingQuestions
-                                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : const Icon(Icons.help_outline),
-                                style: dockButtonStyle,
-                              ),
-                              IconButton.outlined(
                                 tooltip: 'Markers (${meetingProvider.markers.length})',
                                 onPressed: () => _showMarkersDialog(meetingProvider),
                                 icon: const Icon(Icons.bookmarks_outlined),
@@ -1676,62 +1620,6 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                             icon: meetingProvider.isGeneratingSummary
                                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.summarize),
-                            style: dockButtonStyle,
-                          ),
-                          IconButton.outlined(
-                            tooltip: 'Insights (long-press to regenerate)',
-                            onPressed: meetingProvider.isGeneratingInsights
-                                ? null
-                                : () async {
-                                    final session = meetingProvider.currentSession;
-                                    // If insights exist, show them directly
-                                    if (session?.insights != null && session!.insights!.isNotEmpty) {
-                                      await _showTextDialog(title: 'Insights', text: session.insights!);
-                                    } else {
-                                      // Generate if doesn't exist
-                                      await meetingProvider.generateInsights();
-                                      final s = meetingProvider.currentSession?.insights ?? '';
-                                      await _showTextDialog(title: 'Insights', text: s);
-                                    }
-                                  },
-                            onLongPress: meetingProvider.isGeneratingInsights
-                                ? null
-                                : () async {
-                                    // Force regenerate
-                                    await meetingProvider.generateInsights(regenerate: true);
-                                    final s = meetingProvider.currentSession?.insights ?? '';
-                                    await _showTextDialog(title: 'Insights', text: s);
-                                  },
-                            icon: meetingProvider.isGeneratingInsights
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.insights),
-                            style: dockButtonStyle,
-                          ),
-                          IconButton.outlined(
-                            tooltip: 'Questions (long-press to regenerate)',
-                            onPressed: meetingProvider.isGeneratingQuestions
-                                ? null
-                                : () async {
-                                    final session = meetingProvider.currentSession;
-                                    // If questions exist, show them directly
-                                    if (session?.questions != null && session!.questions!.isNotEmpty) {
-                                      await _showTextDialog(title: 'Suggested Questions', text: session.questions!);
-                                    } else {
-                                      // Generate if doesn't exist
-                                      await _generateSuggestedQuestions();
-                                      await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
-                                    }
-                                  },
-                            onLongPress: meetingProvider.isGeneratingQuestions
-                                ? null
-                                : () async {
-                                    // Force regenerate
-                                    await _generateSuggestedQuestions(regenerate: true);
-                                    await _showTextDialog(title: 'Suggested Questions', text: _suggestedQuestions);
-                                  },
-                            icon: meetingProvider.isGeneratingQuestions
-                                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.help_outline),
                             style: dockButtonStyle,
                           ),
                           IconButton.outlined(

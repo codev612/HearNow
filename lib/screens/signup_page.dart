@@ -118,7 +118,7 @@ class _SignUpPageState extends State<SignUpPage> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Sign up to get started with HearNow',
+                      'Sign up to get started with FinalRound',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                           ),

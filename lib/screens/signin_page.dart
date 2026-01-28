@@ -71,7 +71,7 @@ class _SignInPageState extends State<SignInPage> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'HearNow',
+                      'FinalRound',
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),

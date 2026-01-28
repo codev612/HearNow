@@ -5,16 +5,13 @@ import {
   getUserById,
   getUserByIdFull,
   getUserByVerificationToken,
-  getUserByVerificationCode,
   getUserByResetToken,
   markEmailVerified,
-  setVerificationToken,
   setVerificationCode,
   generateVerificationCode,
   setResetToken,
   updatePassword,
   updateUserName,
-  updateUserEmail,
   setPendingEmailChange,
   verifyCurrentEmailForChange,
   setNewEmailCode,
@@ -74,7 +71,7 @@ router.post('/signup', async (req: Request<{}, {}, SignupBody>, res: Response) =
 
     // Name validation
     const trimmedName = name.trim();
-    if (trimmedName.isEmpty) {
+    if (trimmedName.length === 0) {
       return res.status(400).json({ error: 'Name cannot be empty' });
     }
     if (trimmedName.length < 2) {

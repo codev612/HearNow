@@ -335,7 +335,7 @@ class SpeechToTextProvider extends ChangeNotifier {
     _aiService?.setAuthToken(token);
   }
 
-  List<Map<String, String>> _buildAiTurns({int maxTurns = 20}) {
+  List<Map<String, String>> _buildAiTurns({int maxTurns = 50}) {
     final finals = _bubbles.where((b) => !b.isDraft).toList(growable: false);
     final recent = finals.length > maxTurns ? finals.sublist(finals.length - maxTurns) : finals;
 

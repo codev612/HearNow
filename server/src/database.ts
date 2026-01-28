@@ -395,6 +395,11 @@ export const createUser = async (email: string, name: string, passwordHash: stri
     verification_token_expires: codeExpiresAt, // Same expiration as code
     reset_token: null,
     reset_token_expires: null,
+    pending_email: null,
+    current_email_code: null,
+    current_email_code_expires: null,
+    new_email_code: null,
+    new_email_code_expires: null,
     created_at: now,
     updated_at: now,
   };

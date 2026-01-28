@@ -6,6 +6,7 @@ import '../models/meeting_mode.dart';
 import '../models/transcript_bubble.dart';
 import '../services/meeting_storage_service.dart';
 import '../services/ai_service.dart';
+import '../services/meeting_mode_service.dart';
 
 class MeetingProvider extends ChangeNotifier {
   final MeetingStorageService _storage = MeetingStorageService();
@@ -366,16 +367,78 @@ class MeetingProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final turns = bubbles.map((b) => {
+      final allTurns = bubbles.map((b) => {
         'source': b.source.toString().split('.').last,
         'text': b.text,
       }).toList();
 
-      print('[MeetingProvider] Generating summary with ${turns.length} turns');
+      // Get notes template from current mode
+      String? notesTemplate;
+      final modeKey = _currentSession!.modeKey;
+      if (modeKey != null && modeKey.isNotEmpty) {
+        final modeService = MeetingModeService();
+        modeService.setAuthToken(_storage.authToken);
+        final config = await modeService.getConfigForModeKey(modeKey);
+        notesTemplate = config.notesTemplate;
+        print('[MeetingProvider] Retrieved notes template for mode: $modeKey');
+        print('[MeetingProvider] Notes template length: ${notesTemplate?.length ?? 0}');
+        if (notesTemplate != null && notesTemplate.isNotEmpty) {
+          print('[MeetingProvider] Notes template preview: ${notesTemplate.substring(0, notesTemplate.length > 200 ? 200 : notesTemplate.length)}...');
+        }
+      } else {
+        print('[MeetingProvider] No modeKey found in session, skipping notes template');
+      }
+
+      print('[MeetingProvider] Generating summary with ${allTurns.length} turns');
+      print('[MeetingProvider] Using notes template: ${notesTemplate != null && notesTemplate.isNotEmpty ? "yes (${notesTemplate.length} chars)" : "no"}');
       print('[MeetingProvider] AiService authToken: ${_aiService != null ? (_storage.authToken != null ? "set" : "null") : "null"}');
       print('[MeetingProvider] AiService aiWsUrl: ${_aiService?.aiWsUrl}');
       
-      final summary = await _aiService!.generateSummary(turns: turns);
+      String summary;
+      // If more than 50 turns, summarize in chunks and then combine
+      if (allTurns.length > 50) {
+        print('[MeetingProvider] Too many turns (${allTurns.length}), using chunked summarization');
+        final chunkSize = 50;
+        final chunks = <List<Map<String, String>>>[];
+        
+        // Split into chunks of 50
+        for (int i = 0; i < allTurns.length; i += chunkSize) {
+          final end = (i + chunkSize < allTurns.length) ? i + chunkSize : allTurns.length;
+          chunks.add(allTurns.sublist(i, end));
+        }
+        
+        // Summarize each chunk
+        final chunkSummaries = <String>[];
+        for (int i = 0; i < chunks.length; i++) {
+          print('[MeetingProvider] Summarizing chunk ${i + 1}/${chunks.length} (${chunks[i].length} turns)');
+          final chunkSummary = await _aiService!.generateSummary(
+            turns: chunks[i], 
+            notesTemplate: notesTemplate,
+          );
+          chunkSummaries.add(chunkSummary);
+        }
+        
+        // Combine chunk summaries into final summary
+        if (chunkSummaries.length == 1) {
+          summary = chunkSummaries.first;
+        } else {
+          // Create a combined summary by summarizing the chunk summaries
+          final combinedTurns = chunkSummaries.asMap().entries.map((e) => {
+            'source': 'summary',
+            'text': 'Chunk ${e.key + 1} Summary:\n${e.value}',
+          }).toList();
+          
+          print('[MeetingProvider] Combining ${chunkSummaries.length} chunk summaries');
+          summary = await _aiService!.generateSummary(
+            turns: combinedTurns, 
+            notesTemplate: notesTemplate,
+          );
+        }
+      } else {
+        // Use all turns directly if 50 or fewer
+        summary = await _aiService!.generateSummary(turns: allTurns, notesTemplate: notesTemplate);
+      }
+      
       print('[MeetingProvider] Summary generated: ${summary.length} characters');
       _currentSession = _currentSession!.copyWith(
         summary: summary,

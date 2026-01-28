@@ -174,7 +174,6 @@ app.put('/api/sessions/:id', authenticate, async (req: AuthRequest, res: Respons
         summary: summary ? String(summary) : null,
         insights: insights ? String(insights) : null,
         questions: questions ? String(questions) : null,
-        insights: insights ? String(insights) : null,
         metadata: metadata && typeof metadata === 'object' ? metadata : {},
       };
 
@@ -434,7 +433,12 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
 
     switch (requestMode) {
       case 'summary':
-        systemPrompt = 'You are HearNow, a meeting assistant. Summarize the meeting conversation so far into concise bullet points. Include key topics discussed, participant responses, and any notable points. If action items or follow-ups exist, list them separately.';
+        // Use provided system prompt if available (for notes template), otherwise use default
+        if (typeof providedSystemPrompt === 'string' && providedSystemPrompt.trim().length > 0) {
+          systemPrompt = providedSystemPrompt;
+        } else {
+          systemPrompt = 'You are FinalRound, a meeting assistant. Summarize the meeting conversation so far into concise bullet points. Include key topics discussed, participant responses, and any notable points. If action items or follow-ups exist, list them separately.';
+        }
         if (historyText.length > 0) {
           userPrompt = `Meeting transcript:\n${historyText}\n\nProvide a concise summary of this meeting.`;
         } else {
@@ -442,7 +446,7 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
         }
         break;
       case 'insights':
-        systemPrompt = 'You are HearNow, a meeting assistant. Analyze the meeting transcript and provide key insights about the participants and discussion. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
+        systemPrompt = 'You are FinalRound, a meeting assistant. Analyze the meeting transcript and provide key insights about the participants and discussion. Focus on strengths, areas of concern, communication style, technical knowledge, cultural fit, and overall assessment. Be objective and specific.';
         if (historyText.length > 0) {
           userPrompt = `Meeting transcript:\n${historyText}\n\nProvide key insights about this meeting and participants.`;
         } else {
@@ -450,7 +454,7 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
         }
         break;
       case 'questions':
-        systemPrompt = 'You are HearNow, a meeting assistant. Based on the meeting transcript so far, suggest 3-5 relevant follow-up questions or discussion points. Consider what has been discussed, what gaps exist, and what would help move the conversation forward. Format as a numbered list.';
+        systemPrompt = 'You are FinalRound, a meeting assistant. Based on the meeting transcript so far, suggest 3-5 relevant follow-up questions or discussion points. Consider what has been discussed, what gaps exist, and what would help move the conversation forward. Format as a numbered list.';
         if (historyText.length > 0) {
           userPrompt = `Meeting transcript:\n${historyText}\n\nSuggest relevant follow-up questions or discussion points for this meeting.`;
         } else {
@@ -461,7 +465,7 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
         // Use provided system prompt or default
         const providedPrompt = typeof providedSystemPrompt === 'string' && providedSystemPrompt.trim().length > 0
           ? providedSystemPrompt.trim()
-          : 'You are HearNow, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
+          : 'You are FinalRound, a meeting assistant. Reply helpfully and concisely to what was said. If the user asks a question, answer it. If the transcript is incomplete, ask one clarifying question.';
         
         // Enhance prompt to request concise, formatted responses
         const enhancedPrompt = `${providedPrompt}\n\nIMPORTANT: Keep responses concise and easy to scan. Use formatting to highlight key points:\n- Use **bold** for main answers or key takeaways\n- Use bullet points (•) for tips or action items\n- Keep paragraphs short (2-3 sentences max)\n- Lead with the most important information first`;
@@ -696,6 +700,45 @@ wss.on('connection', (ws: WebSocket) => {
         
         const source = receivedSource; // Use normalized source directly
         
+        // Auto-initialize Deepgram connection if not already started
+        if (source === 'mic' && !deepgramMic) {
+          console.log('[DEBUG] Auto-initializing deepgramMic connection (audio received before start)');
+          try {
+            if (!process.env.DEEPGRAM_API_KEY) {
+              console.error('Deepgram API key not configured');
+              ws.send(JSON.stringify({ 
+                type: 'error', 
+                message: 'Server error: Deepgram API key not configured. Please set DEEPGRAM_API_KEY in .env file' 
+              }));
+              return;
+            }
+            deepgramMic = startDeepgram('mic');
+          } catch (error: any) {
+            console.error('Failed to auto-start Deepgram mic connection:', error);
+            ws.send(JSON.stringify({ type: 'error', message: 'Failed to initialize mic transcription: ' + (error.message || 'Unknown error') }));
+            return;
+          }
+        }
+        
+        if (source === 'system' && !deepgramSystem) {
+          console.log('[DEBUG] Auto-initializing deepgramSystem connection (audio received before start)');
+          try {
+            if (!process.env.DEEPGRAM_API_KEY) {
+              console.error('Deepgram API key not configured');
+              ws.send(JSON.stringify({ 
+                type: 'error', 
+                message: 'Server error: Deepgram API key not configured. Please set DEEPGRAM_API_KEY in .env file' 
+              }));
+              return;
+            }
+            deepgramSystem = startDeepgram('system');
+          } catch (error: any) {
+            console.error('Failed to auto-start Deepgram system connection:', error);
+            ws.send(JSON.stringify({ type: 'error', message: 'Failed to initialize system transcription: ' + (error.message || 'Unknown error') }));
+            return;
+          }
+        }
+        
         // Debug logging with explicit checks
         if (source === 'system') {
           console.log(`[DEBUG] Routing SYSTEM audio - deepgramSystem available: ${!!deepgramSystem}, deepgramMic available: ${!!deepgramMic}`);
@@ -869,8 +912,13 @@ aiWss.on('connection', (ws: WebSocket) => {
 
       switch (requestMode) {
         case 'summary':
-          systemPrompt =
-            'You are HearNow, a meeting assistant. Summarize the meeting conversation so far into concise bullet points. Include key topics discussed, participant responses, and any notable points. If action items or follow-ups exist, list them separately.';
+          // Use provided system prompt if available (for notes template), otherwise use default
+          if (typeof providedSystemPrompt === 'string' && providedSystemPrompt.trim().length > 0) {
+            systemPrompt = providedSystemPrompt;
+          } else {
+            systemPrompt =
+              'You are HearNow, a meeting assistant. Summarize the meeting conversation so far into concise bullet points. Include key topics discussed, participant responses, and any notable points. If action items or follow-ups exist, list them separately.';
+          }
           if (historyText.length > 0) {
             userPrompt = `Meeting transcript:\n${historyText}\n\nProvide a concise summary of this meeting.`;
           } else {

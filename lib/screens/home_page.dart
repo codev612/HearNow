@@ -666,7 +666,7 @@ class _HomePageState extends State<HomePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'HearNow',
+            'FinalRound',
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: 8),

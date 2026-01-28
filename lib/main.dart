@@ -24,9 +24,9 @@ Future<void> initSystemTray() async {
     // For Windows, use the icon from resources or assets
     // The package will look for the icon in the assets folder
     await systemTray.initSystemTray(
-      title: "HearNow",
+      title: "FinalRound",
       iconPath: "assets/app_icon.ico",
-      toolTip: "HearNow - Speech to Text",
+      toolTip: "FinalRound - Speech to Text",
     );
     
     // Create tray menu (shown on right-click)
@@ -102,6 +102,8 @@ void main() async {
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setBackgroundColor(Colors.transparent);
       await windowManager.setAlwaysOnTop(true);
+      // Set window title
+      await windowManager.setTitle('FinalRound');
       // Prevent window from closing - will be handled by onWindowClose
       await windowManager.setPreventClose(true);
       // Set minimum window size
@@ -186,7 +188,7 @@ class MyApp extends StatelessWidget {
           });
           
           return MaterialApp(
-            title: 'HearNow',
+            title: 'FinalRound',
             theme: ThemeData(
               colorScheme: ColorScheme.fromSeed(
                 seedColor: Colors.deepPurple,

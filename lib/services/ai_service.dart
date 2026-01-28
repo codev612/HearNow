@@ -296,9 +296,27 @@ class AiService {
 
   Future<String> generateSummary({
     required List<Map<String, String>> turns,
+    String? notesTemplate,
     Duration timeout = const Duration(seconds: 60),
-  }) =>
-      respond(turns: turns, mode: 'summary', timeout: timeout);
+  }) {
+    String? systemPrompt;
+    if (notesTemplate != null && notesTemplate.isNotEmpty) {
+      systemPrompt = '''You are generating a summary using the following notes template structure. Your task is to fill in each section with actual content from the conversation transcript.
+
+IMPORTANT: 
+- Use the EXACT section headings from the template below
+- Fill each section with detailed, relevant content from the conversation
+- Do NOT leave sections empty or use placeholder text
+- Extract and organize information from the transcript into the appropriate sections
+- Maintain the same markdown formatting (## for headings)
+
+Notes Template Structure:
+$notesTemplate
+
+Now generate the summary by filling in all sections with content from the conversation.''';
+    }
+    return respond(turns: turns, mode: 'summary', systemPrompt: systemPrompt, timeout: timeout);
+  }
 
   Future<String> generateInsights({
     required List<Map<String, String>> turns,
