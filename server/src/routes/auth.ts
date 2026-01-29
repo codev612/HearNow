@@ -6,10 +6,12 @@ import {
   getUserByIdFull,
   getUserByVerificationToken,
   getUserByResetToken,
+  getUserByResetCode,
   markEmailVerified,
   setVerificationCode,
   generateVerificationCode,
   setResetToken,
+  setResetCode,
   updatePassword,
   updateUserName,
   setPendingEmailChange,
@@ -20,6 +22,7 @@ import {
   generateToken as generateDbToken,
 } from '../database.js';
 import { hashPassword, verifyPassword, generateToken } from '../auth.js';
+import { getUserByIdFull } from '../database.js';
 import { sendVerificationEmail, sendPasswordResetEmail, sendProfileChangeAlert } from '../emailService.js';
 import { authenticate, AuthRequest } from '../auth.js';
 
@@ -45,7 +48,7 @@ interface ForgotPasswordBody {
 }
 
 interface ResetPasswordBody {
-  token?: string;
+  code?: string;
   password?: string;
 }
 
@@ -333,12 +336,12 @@ router.post('/forgot-password', async (req: Request<{}, {}, ForgotPasswordBody>,
       return res.status(500).json({ error: 'Invalid user data' });
     }
 
-    // Generate reset token
-    const resetToken = generateDbToken();
-    await setResetToken(user.id, resetToken);
+    // Generate reset code (6-digit)
+    const resetCode = generateVerificationCode();
+    await setResetCode(user.id, resetCode);
 
-    // Send password reset email
-    const emailSent = await sendPasswordResetEmail(email, resetToken);
+    // Send password reset email with code
+    const emailSent = await sendPasswordResetEmail(email, resetCode);
     if (!emailSent) {
       return res.status(500).json({ error: 'Failed to send password reset email' });
     }
@@ -356,24 +359,46 @@ router.post('/forgot-password', async (req: Request<{}, {}, ForgotPasswordBody>,
 // Reset password
 router.post('/reset-password', async (req: Request<{}, {}, ResetPasswordBody>, res: Response) => {
   try {
-    const { token, password } = req.body;
+    const { code, password } = req.body;
 
-    if (!token || !password) {
-      return res.status(400).json({ error: 'Token and password are required' });
+    if (!code || !password) {
+      return res.status(400).json({ error: 'Reset code and password are required' });
     }
 
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters long' });
     }
 
-    const user = await getUserByResetToken(token);
+    const user = await getUserByResetCode(code);
     if (!user || !user.id) {
-      return res.status(400).json({ error: 'Invalid or expired reset token' });
+      return res.status(400).json({ error: 'Invalid or expired reset code' });
     }
 
     // Update password
-    const passwordHash = await hashPassword(password);
-    await updatePassword(user.id, passwordHash);
+    try {
+      const passwordHash = await hashPassword(password);
+      console.log(`[Reset Password] Updating password for user ${user.id}`);
+      await updatePassword(user.id, passwordHash);
+      
+      // Verify the password was updated correctly by fetching the user again
+      const updatedUser = await getUserByIdFull(user.id);
+      if (!updatedUser) {
+        console.error(`[Reset Password] Failed to fetch user after update: ${user.id}`);
+        return res.status(500).json({ error: 'Failed to verify password update' });
+      }
+      
+      // Verify the new password works
+      const passwordValid = await verifyPassword(password, updatedUser.password_hash);
+      if (!passwordValid) {
+        console.error(`[Reset Password] Password verification failed after update for user: ${user.id}`);
+        return res.status(500).json({ error: 'Password update verification failed' });
+      }
+      
+      console.log(`[Reset Password] Password updated and verified successfully for user ${user.id}`);
+    } catch (error) {
+      console.error('[Reset Password] Error updating password:', error);
+      return res.status(500).json({ error: 'Failed to update password' });
+    }
 
     return res.json({
       message: 'Password reset successfully',

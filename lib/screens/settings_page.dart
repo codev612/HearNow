@@ -70,16 +70,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 onTap: () => setState(() => _selectedIndex = 1),
               ),
               _SidebarItem(
-                icon: Icons.link,
-                label: 'Connection',
-                isSelected: _selectedIndex == 2,
-                onTap: () => setState(() => _selectedIndex = 2),
-              ),
-              _SidebarItem(
                 icon: Icons.mic,
                 label: 'Audio',
-                isSelected: _selectedIndex == 3,
-                onTap: () => setState(() => _selectedIndex = 3),
+                isSelected: _selectedIndex == 2,
+                onTap: () => setState(() => _selectedIndex = 2),
               ),
               _SidebarItem(
                 icon: Icons.tune,
@@ -105,8 +99,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SidebarItem(
                   icon: Icons.palette,
                   label: 'Appearance',
-                  isSelected: _selectedIndex == 4,
-                  onTap: () => setState(() => _selectedIndex = 4),
+                  isSelected: _selectedIndex == 3,
+                  onTap: () => setState(() => _selectedIndex = 3),
                 ),
             ],
           ),
@@ -147,10 +141,8 @@ class _SettingsPageState extends State<SettingsPage> {
           case 1:
             return _buildShortcutsContent(shortcutsProvider);
           case 2:
-            return _buildConnectionContent();
-          case 3:
             return _buildAudioDevicesContent();
-          case 4:
+          case 3:
             return Platform.isWindows ? _buildAppearanceContent() : _buildProfileContent();
           default:
             return _buildProfileContent();
@@ -231,40 +223,6 @@ class _SettingsPageState extends State<SettingsPage> {
             action: 'toggleHide',
             shortcutsProvider: shortcutsProvider,
           ),
-      ],
-    );
-  }
-
-  Widget _buildConnectionContent() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'Connection',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        ListTile(
-          leading: const Icon(Icons.link),
-          title: const Text('WebSocket URL'),
-          subtitle: Text(AppConfig.serverWebSocketUrl),
-          trailing: IconButton(
-            tooltip: 'Copy',
-            icon: const Icon(Icons.copy),
-            iconSize: 20,
-            constraints: const BoxConstraints(),
-            padding: EdgeInsets.zero,
-            onPressed: () async {
-              await Clipboard.setData(
-                ClipboardData(text: AppConfig.serverWebSocketUrl),
-              );
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Server URL copied')),
-              );
-            },
-          ),
-        ),
       ],
     );
   }

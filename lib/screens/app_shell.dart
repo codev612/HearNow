@@ -24,6 +24,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> with WindowListener {
   int _index = 0; // default to Home
   bool _wasAuthenticated = false;
+  bool _authTransitionScheduled = false;
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _AppShellState extends State<AppShell> with WindowListener {
       windowManager.addListener(this);
     }
   }
+  
 
   @override
   void dispose() {
@@ -45,13 +47,10 @@ class _AppShellState extends State<AppShell> with WindowListener {
   Future<bool> onWindowClose() async {
     // Minimize to tray instead of closing
     if (Platform.isWindows) {
-      print('[AppShell] Window close requested - hiding to tray');
       try {
         await windowManager.hide();
-        print('[AppShell] Window hidden to tray');
         return true; // Prevent window from closing
       } catch (e) {
-        print('[AppShell] Error hiding window: $e');
         return false; // Allow close if hide fails
       }
     }
@@ -77,28 +76,39 @@ class _AppShellState extends State<AppShell> with WindowListener {
   Widget build(BuildContext context) {
     return Consumer2<AuthProvider, MeetingProvider>(
       builder: (context, authProvider, meetingProvider, _) {
+        final isAuthenticated = authProvider.isAuthenticated;
+        
         // Update auth token whenever auth state changes
-        if (authProvider.isAuthenticated) {
+        if (isAuthenticated) {
           meetingProvider.updateAuthToken(authProvider.token);
         }
         
         // Show signin page if not authenticated
-        if (!authProvider.isAuthenticated) {
+        if (!isAuthenticated) {
+          // Reset auth transition bookkeeping
           _wasAuthenticated = false;
+          _authTransitionScheduled = false;
           return const SignInPage();
         }
 
-        // Reset to home page when user just signed in
-        if (!_wasAuthenticated && authProvider.isAuthenticated) {
+        // If we just transitioned from unauthenticated -> authenticated,
+        // force home immediately for this frame, then sync state next frame.
+        final shouldForceHomeNow = !_wasAuthenticated;
+        final displayIndex = shouldForceHomeNow ? 0 : _index;
+
+        if (shouldForceHomeNow && !_authTransitionScheduled) {
+          _authTransitionScheduled = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {
-                _index = 0; // Go to home page after sign in
-              });
-            }
+            if (!mounted) return;
+            setState(() {
+              _index = 0;
+              _wasAuthenticated = true;
+              _authTransitionScheduled = false;
+            });
           });
+        } else {
+          _wasAuthenticated = true;
         }
-        _wasAuthenticated = true;
 
         return Consumer<ShortcutsProvider>(
           builder: (context, shortcutsProvider, child) {
@@ -149,7 +159,7 @@ class _AppShellState extends State<AppShell> with WindowListener {
           ),
           SafeArea(
             child: IndexedStack(
-              index: _index,
+              index: displayIndex,
               children: [
                 // Home page with opaque background
                 Container(
@@ -187,13 +197,13 @@ class _AppShellState extends State<AppShell> with WindowListener {
       bottomNavigationBar: Consumer<SpeechToTextProvider>(
         builder: (context, speechProvider, child) {
           final isRecording = speechProvider.isRecording;
-          final showAlert = isRecording && _index != 1; // Show alert when recording and not on meeting page
+          final showAlert = isRecording && displayIndex != 1; // Show alert when recording and not on meeting page
           
           return BottomNavigationBar(
-            currentIndex: _index,
+            currentIndex: displayIndex,
             onTap: (i) async {
               // If clicking Home tab (index 0), reload sessions to show newly saved ones
-              if (i == 0 && _index != 0) {
+              if (i == 0 && displayIndex != 0) {
                 final meetingProvider = context.read<MeetingProvider>();
                 // Reload all sessions (no pagination for homepage)
                 meetingProvider.loadSessions();

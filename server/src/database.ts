@@ -15,6 +15,8 @@ export interface User {
   verification_token_expires: number | null;
   reset_token: string | null;
   reset_token_expires: number | null;
+  reset_code: string | null; // 6-digit code for password reset
+  reset_code_expires: number | null;
   // Email change verification
   pending_email: string | null; // New email waiting for verification
   current_email_code: string | null; // Code sent to current email
@@ -151,7 +153,9 @@ export const connectDB = async (): Promise<void> => {
       await usersCollection.createIndex({ reset_token: 1 });
       await usersCollection.createIndex({ 'verification_token_expires': 1 });
       await usersCollection.createIndex({ 'verification_code_expires': 1 });
+      await usersCollection.createIndex({ reset_code: 1 });
       await usersCollection.createIndex({ 'reset_token_expires': 1 });
+      await usersCollection.createIndex({ 'reset_code_expires': 1 });
     }
     
     if (!sessionsCollection) {
@@ -335,6 +339,22 @@ export const setResetToken = async (userId: string, token: string, expiresInHour
   );
 };
 
+// Set reset code (6-digit code for password reset)
+export const setResetCode = async (userId: string, code: string, expiresInMinutes: number = 10): Promise<void> => {
+  const expiresAt = Date.now() + expiresInMinutes * 60 * 1000;
+  const collection = getUsersCollection();
+  await collection.updateOne(
+    { _id: new ObjectId(userId) },
+    {
+      $set: {
+        reset_code: code,
+        reset_code_expires: expiresAt,
+        updated_at: Date.now(),
+      },
+    }
+  );
+};
+
 export const clearVerificationToken = async (userId: string): Promise<void> => {
   const collection = getUsersCollection();
   await collection.updateOne(
@@ -357,6 +377,8 @@ export const clearResetToken = async (userId: string): Promise<void> => {
       $set: {
         reset_token: null,
         reset_token_expires: null,
+        reset_code: null,
+        reset_code_expires: null,
         updated_at: Date.now(),
       },
     }
@@ -397,6 +419,8 @@ export const createUser = async (email: string, name: string, passwordHash: stri
     verification_token_expires: codeExpiresAt, // Same expiration as code
     reset_token: null,
     reset_token_expires: null,
+    reset_code: null,
+    reset_code_expires: null,
     pending_email: null,
     current_email_code: null,
     current_email_code_expires: null,
@@ -453,19 +477,41 @@ export const getUserByResetToken = async (token: string): Promise<User | undefin
   return toUser(user);
 };
 
+// Get user by reset code
+export const getUserByResetCode = async (code: string): Promise<User | undefined> => {
+  const collection = getUsersCollection();
+  const user = await collection.findOne({
+    reset_code: code,
+    reset_code_expires: { $gt: Date.now() },
+  });
+  return toUser(user);
+};
+
 export const updatePassword = async (userId: string, passwordHash: string): Promise<void> => {
   const collection = getUsersCollection();
-  await collection.updateOne(
+  const result = await collection.updateOne(
     { _id: new ObjectId(userId) },
     {
       $set: {
         password_hash: passwordHash,
         reset_token: null,
         reset_token_expires: null,
+        reset_code: null,
+        reset_code_expires: null,
         updated_at: Date.now(),
       },
     }
   );
+  
+  if (result.matchedCount === 0) {
+    throw new Error(`User not found: ${userId}`);
+  }
+  
+  if (result.modifiedCount === 0) {
+    console.warn(`[updatePassword] No document modified for user ${userId} - password may already be the same`);
+  }
+  
+  console.log(`[updatePassword] Password updated for user ${userId}, matched: ${result.matchedCount}, modified: ${result.modifiedCount}`);
 };
 
 export const updateUserName = async (userId: string, name: string): Promise<void> => {

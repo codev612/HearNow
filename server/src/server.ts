@@ -402,7 +402,7 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
       });
     }
 
-    const { turns, mode, question, systemPrompt: providedSystemPrompt } = req.body ?? {};
+    const { turns, mode, question, systemPrompt: providedSystemPrompt, model: requestedModel } = req.body ?? {};
     if (!Array.isArray(turns)) {
       return res.status(400).json({ error: 'Missing turns[]' });
     }
@@ -501,7 +501,11 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
         break;
     }
 
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const modelText = typeof requestedModel === 'string' ? requestedModel.trim() : '';
+    if (modelText.length > 80) {
+      return res.status(400).json({ error: 'Model name too long' });
+    }
+    const model = modelText.length > 0 ? modelText : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
     const maxTokens = requestMode === 'insights' ? 600 : requestMode === 'questions' ? 300 : 400;
 
     const completion = await openai.chat.completions.create({
@@ -510,7 +514,7 @@ app.post('/ai/respond', authenticate, async (req: AuthRequest, res: Response) =>
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      max_tokens: maxTokens,
+      max_completion_tokens: maxTokens,
       temperature: 0.2,
     });
 
@@ -878,7 +882,7 @@ aiWss.on('connection', (ws: WebSocket) => {
       currentRequestId = requestId;
       cancelled = false;
 
-      const { turns, mode, question, systemPrompt: providedSystemPrompt } = data ?? {};
+      const { turns, mode, question, systemPrompt: providedSystemPrompt, model: requestedModel } = data ?? {};
       if (!Array.isArray(turns)) {
         return send({ type: 'ai_error', requestId, status: 400, message: 'Missing turns[]' });
       }
@@ -983,7 +987,11 @@ aiWss.on('connection', (ws: WebSocket) => {
           break;
       }
 
-      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      const modelText = typeof requestedModel === 'string' ? requestedModel.trim() : '';
+      if (modelText.length > 80) {
+        return send({ type: 'ai_error', requestId, status: 400, message: 'Model name too long' });
+      }
+      const model = modelText.length > 0 ? modelText : (process.env.OPENAI_MODEL || 'gpt-4o-mini');
       const maxTokens = requestMode === 'insights' ? 600 : requestMode === 'questions' ? 300 : 400;
 
       send({ type: 'ai_start', requestId });
@@ -996,7 +1004,7 @@ aiWss.on('connection', (ws: WebSocket) => {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          max_tokens: maxTokens,
+          max_completion_tokens: maxTokens,
           temperature: 0.2,
           stream: true,
         });

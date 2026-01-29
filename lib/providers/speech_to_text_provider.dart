@@ -38,6 +38,10 @@ class SpeechToTextProvider extends ChangeNotifier {
   final List<TranscriptBubble> _bubbles = <TranscriptBubble>[];
   String _errorMessage = '';
   int _audioFrameCount = 0;
+  
+  // Resource optimization: Limit bubbles in memory to prevent excessive memory usage
+  // Older bubbles are already saved to the session, so we can safely limit memory
+  static const int _maxBubblesInMemory = 2000; // Keep last 2000 bubbles in memory
 
   String _aiResponse = '';
   String _aiErrorMessage = '';
@@ -271,6 +275,15 @@ class SpeechToTextProvider extends ChangeNotifier {
     );
     _bubbles.add(newBubble);
     
+    // Resource optimization: Limit bubbles in memory to prevent excessive memory usage
+    // Older bubbles are already saved to the session, so we can safely limit memory
+    if (_bubbles.length > _maxBubblesInMemory) {
+      // Remove oldest bubbles (keep most recent)
+      final toRemove = _bubbles.length - _maxBubblesInMemory;
+      _bubbles.removeRange(0, toRemove);
+      print('[SpeechToTextProvider] Trimmed bubble history: removed $toRemove old bubbles (keeping last $_maxBubblesInMemory)');
+    }
+    
     // Check if new bubble is a question from system source (others asking)
     if (source == TranscriptSource.system && 
         _onQuestionDetected != null && 
@@ -439,7 +452,7 @@ class SpeechToTextProvider extends ChangeNotifier {
     return null;
   }
 
-  Future<void> askAi({String? question, String? systemPrompt}) async {
+  Future<void> askAi({String? question, String? systemPrompt, String? model}) async {
     final ai = _aiService;
     if (ai == null) {
       _aiErrorMessage = 'AI service not initialized';
@@ -474,12 +487,19 @@ class SpeechToTextProvider extends ChangeNotifier {
           question: finalQuestion,
           mode: 'reply',
           systemPrompt: systemPrompt,
+          model: model,
         )) {
           _aiResponse += delta;
           notifyListeners();
         }
       } else {
-        final text = await ai.respond(turns: turns, question: finalQuestion, mode: 'reply', systemPrompt: systemPrompt);
+        final text = await ai.respond(
+          turns: turns,
+          question: finalQuestion,
+          mode: 'reply',
+          systemPrompt: systemPrompt,
+          model: model,
+        );
         _aiResponse = text;
       }
       _aiErrorMessage = '';
@@ -611,8 +631,15 @@ class SpeechToTextProvider extends ChangeNotifier {
         
         if (started) {
           _systemAudioPollTimer?.cancel();
+          // Resource optimization: Adaptive polling frequency
+          // Use faster polling when system audio is active, slower when idle
+          final hasRecentSystemActivity = _recentSystemTranscripts.isNotEmpty;
+          final pollInterval = hasRecentSystemActivity 
+              ? const Duration(milliseconds: 50)  // Fast when active (20 Hz)
+              : const Duration(milliseconds: 100);  // Slower when idle (10 Hz) - saves CPU/battery
+          
           _systemAudioPollTimer = Timer.periodic(
-            const Duration(milliseconds: 50),
+            pollInterval,
             (_) {
               // Check if recording is still active and not stopping before processing
               if (!_isRecording || _isStopping || _transcriptionService == null) {
@@ -1068,7 +1095,14 @@ class SpeechToTextProvider extends ChangeNotifier {
 
   void restoreBubbles(List<TranscriptBubble> bubbles) {
     _bubbles.clear();
-    _bubbles.addAll(bubbles);
+    // Resource optimization: Only restore recent bubbles to limit memory usage
+    // If restoring a very long session, keep only the most recent bubbles
+    if (bubbles.length > _maxBubblesInMemory) {
+      _bubbles.addAll(bubbles.sublist(bubbles.length - _maxBubblesInMemory));
+      print('[SpeechToTextProvider] Restored only last $_maxBubblesInMemory bubbles from ${bubbles.length} total bubbles');
+    } else {
+      _bubbles.addAll(bubbles);
+    }
     notifyListeners();
   }
 

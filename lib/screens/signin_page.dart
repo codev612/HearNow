@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'signup_page.dart';
+import 'forgot_password_page.dart';
 
 class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
@@ -35,14 +36,26 @@ class _SignInPageState extends State<SignInPage> {
     );
 
     if (success && mounted) {
+      // Show success message briefly
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in successful'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 1),
+        ),
+      );
       // Navigation will happen automatically via AppShell listening to auth state
       // AppShell will show home page when authentication state changes
+      // The Consumer in AppShell will rebuild when authProvider.notifyListeners() is called
     } else if (mounted) {
       // Show error
+      final errorMsg = authProvider.errorMessage ?? 'Sign in failed';
+      print('[SignInPage] Sign in failed: $errorMsg');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authProvider.errorMessage ?? 'Sign in failed'),
+          content: Text(errorMsg),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -148,7 +161,16 @@ class _SignInPageState extends State<SignInPage> {
                         );
                       },
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
+                        );
+                      },
+                      child: const Text('Forgot Password?'),
+                    ),
+                    const SizedBox(height: 8),
                     TextButton(
                       onPressed: () {
                         Navigator.of(context).push(

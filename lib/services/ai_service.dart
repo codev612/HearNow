@@ -30,7 +30,12 @@ class AiService {
 
   Future<void> _ensureAiConnected() async {
     if (aiWsUrl == null) return;
-    if (_aiChannel != null) return;
+    // Resource optimization: Reuse existing WebSocket connection if still open
+    if (_aiChannel != null) {
+      // Check if connection is still valid (readyState check would require platform channel)
+      // For now, assume connection is valid if channel exists
+      return;
+    }
     if (_authToken == null || _authToken!.isEmpty) {
       throw Exception('Authentication required');
     }
@@ -45,7 +50,7 @@ class AiService {
 
     print('[AiService] Connecting to AI WebSocket: $wsUrl');
     _aiChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
-    print('[AiService] AI WebSocket connected');
+    print('[AiService] AI WebSocket connected (reused for multiple requests)');
     _aiSub = _aiChannel!.stream.listen(
       (message) {
         try {
@@ -143,6 +148,7 @@ class AiService {
     String? question,
     String mode = 'reply',
     String? systemPrompt,
+    String? model,
     Duration timeout = const Duration(seconds: 60),
   }) {
     if (aiWsUrl == null) {
@@ -180,6 +186,9 @@ class AiService {
         
         final prompt = systemPrompt?.trim() ?? '';
         if (prompt.isNotEmpty) payload['systemPrompt'] = prompt;
+
+        final chosenModel = model?.trim() ?? '';
+        if (chosenModel.isNotEmpty) payload['model'] = chosenModel;
 
         print('[AiService] Sending ai_request: mode=$mode, requestId=$requestId');
         try {
@@ -229,6 +238,7 @@ class AiService {
     String? question,
     String mode = 'reply',
     String? systemPrompt,
+    String? model,
     Duration timeout = const Duration(seconds: 60),
   }) async {
     if (aiWsUrl != null) {
@@ -239,6 +249,7 @@ class AiService {
           question: question,
           mode: mode,
           systemPrompt: systemPrompt,
+          model: model,
           timeout: timeout,
         )) {
           buffer.write(delta);
@@ -263,6 +274,9 @@ class AiService {
     
     final prompt = systemPrompt?.trim() ?? '';
     if (prompt.isNotEmpty) payload['systemPrompt'] = prompt;
+
+    final chosenModel = model?.trim() ?? '';
+    if (chosenModel.isNotEmpty) payload['model'] = chosenModel;
 
     final headers = <String, String>{
       'Content-Type': 'application/json',
@@ -297,6 +311,7 @@ class AiService {
   Future<String> generateSummary({
     required List<Map<String, String>> turns,
     String? notesTemplate,
+    String? model,
     Duration timeout = const Duration(seconds: 60),
   }) {
     String? systemPrompt;
@@ -315,20 +330,22 @@ $notesTemplate
 
 Now generate the summary by filling in all sections with content from the conversation.''';
     }
-    return respond(turns: turns, mode: 'summary', systemPrompt: systemPrompt, timeout: timeout);
+    return respond(turns: turns, mode: 'summary', systemPrompt: systemPrompt, model: model, timeout: timeout);
   }
 
   Future<String> generateInsights({
     required List<Map<String, String>> turns,
+    String? model,
     Duration timeout = const Duration(seconds: 60),
   }) =>
-      respond(turns: turns, mode: 'insights', timeout: timeout);
+      respond(turns: turns, mode: 'insights', model: model, timeout: timeout);
 
   Future<String> generateQuestions({
     required List<Map<String, String>> turns,
+    String? model,
     Duration timeout = const Duration(seconds: 60),
   }) =>
-      respond(turns: turns, mode: 'questions', timeout: timeout);
+      respond(turns: turns, mode: 'questions', model: model, timeout: timeout);
 
   void disconnectAi() {
     try {

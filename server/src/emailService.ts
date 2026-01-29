@@ -78,7 +78,7 @@ export const sendVerificationEmail = async (email: string, code: string): Promis
   const messageData = {
     from: FROM_EMAIL,
     to: email,
-    subject: 'Verify your HearNow account',
+    subject: 'Verify your FinalRound account',
     html: `
       <!DOCTYPE html>
       <html>
@@ -103,7 +103,7 @@ export const sendVerificationEmail = async (email: string, code: string): Promis
         </head>
         <body>
           <div class="container">
-            <h1>Welcome to HearNow!</h1>
+            <h1>Welcome to FinalRound!</h1>
             <p>Thank you for signing up. Please verify your email address using the code below:</p>
             <div class="code-box">${code}</div>
             <p>Enter this code in the app to complete your registration.</p>
@@ -114,7 +114,7 @@ export const sendVerificationEmail = async (email: string, code: string): Promis
       </html>
     `,
     text: `
-      Welcome to HearNow!
+      Welcome to FinalRound!
       
       Thank you for signing up. Please verify your email address using this code:
       
@@ -144,18 +144,16 @@ export const sendVerificationEmail = async (email: string, code: string): Promis
 };
 
 // Send password reset email
-export const sendPasswordResetEmail = async (email: string, token: string): Promise<boolean> => {
+export const sendPasswordResetEmail = async (email: string, code: string): Promise<boolean> => {
   if (!mg || !MAILGUN_API_KEY || !DOMAIN) {
     console.warn('Mailgun not configured. Skipping email send.');
     return false;
   }
 
-  const resetUrl = `${BASE_URL}/api/auth/reset-password?token=${token}`;
-
   const messageData = {
     from: FROM_EMAIL,
     to: email,
-    subject: 'Reset your HearNow password',
+    subject: 'Reset your FinalRound password',
     html: `
       <!DOCTYPE html>
       <html>
@@ -163,6 +161,7 @@ export const sendPasswordResetEmail = async (email: string, token: string): Prom
           <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
             .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .code-box { display: inline-block; padding: 16px 24px; background-color: #f5f5f5; border: 2px solid #333; border-radius: 8px; font-size: 24px; font-weight: bold; letter-spacing: 4px; margin: 20px 0; font-family: monospace; }
             .button { display: inline-block; padding: 12px 24px; background-color: #dc3545; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
             .button:hover { background-color: #c82333; }
           </style>
@@ -170,11 +169,11 @@ export const sendPasswordResetEmail = async (email: string, token: string): Prom
         <body>
           <div class="container">
             <h1>Password Reset Request</h1>
-            <p>You requested to reset your password. Click the button below to reset it:</p>
-            <a href="${resetUrl}" class="button">Reset Password</a>
-            <p>Or copy and paste this link into your browser:</p>
-            <p><a href="${resetUrl}">${resetUrl}</a></p>
-            <p>This link will expire in 1 hour.</p>
+            <p>You requested to reset your FinalRound password. Use the code below to reset it:</p>
+            <div style="text-align: center;">
+              <div class="code-box">${code}</div>
+            </div>
+            <p>Enter this code in the app to reset your password. This code will expire in 10 minutes.</p>
             <p>If you didn't request a password reset, please ignore this email.</p>
           </div>
         </body>
@@ -183,10 +182,11 @@ export const sendPasswordResetEmail = async (email: string, token: string): Prom
     text: `
       Password Reset Request
       
-      You requested to reset your password. Visit this link to reset it:
-      ${resetUrl}
+      You requested to reset your FinalRound password. Use the code below to reset it:
       
-      This link will expire in 1 hour.
+      ${code}
+      
+      Enter this code in the app to reset your password. This code will expire in 10 minutes.
       
       If you didn't request a password reset, please ignore this email.
     `,
@@ -245,7 +245,7 @@ export const sendProfileChangeAlert = async (
   const messageData = {
     from: FROM_EMAIL,
     to: email,
-    subject: 'Your HearNow profile has been updated',
+    subject: 'Your FinalRound profile has been updated',
     html: `
       <!DOCTYPE html>
       <html>
@@ -267,7 +267,7 @@ export const sendProfileChangeAlert = async (
         <body>
           <div class="container">
             <h1>Profile Update Alert</h1>
-            <p>Your HearNow account profile has been updated:</p>
+            <p>Your FinalRound account profile has been updated:</p>
             <div class="alert-box">
               <ul class="changes-list">
                 ${changesHtml}
@@ -282,7 +282,7 @@ export const sendProfileChangeAlert = async (
     text: `
       Profile Update Alert
       
-      Your HearNow account profile has been updated:
+      Your FinalRound account profile has been updated:
       
       ${changesText}
       

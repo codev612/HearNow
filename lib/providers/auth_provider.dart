@@ -97,31 +97,66 @@ class AuthProvider extends ChangeNotifier {
         }),
       ).timeout(const Duration(seconds: 10));
 
-      final data = jsonDecode(response.body);
+      print('[AuthProvider] Sign in response status: ${response.statusCode}');
+      final responseBody = response.body;
+      print('[AuthProvider] Sign in response body: $responseBody');
+      
+      final data = jsonDecode(responseBody) as Map<String, dynamic>;
 
-      if (response.statusCode == 200 && data['token'] != null) {
+      if (response.statusCode == 200) {
+        if (data['token'] == null) {
+          print('[AuthProvider] ERROR: Token missing in successful response');
+          _errorMessage = 'Sign in response missing token';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+        
         _token = data['token'] as String;
-        final user = data['user'];
+        final user = data['user'] as Map<String, dynamic>?;
         _userEmail = user?['email'] as String? ?? email;
         _userName = user?['name'] as String?;
         _emailVerified = user?['email_verified'] as bool?;
         
+        print('[AuthProvider] Token received: ${_token?.substring(0, 20)}...');
+        print('[AuthProvider] User email: $_userEmail, verified: $_emailVerified');
+        
         // Save to persistent storage
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('auth_token', _token!);
-        if (_userEmail != null) {
-          await prefs.setString('user_email', _userEmail!);
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('auth_token', _token!);
+          if (_userEmail != null) {
+            await prefs.setString('user_email', _userEmail!);
+          }
+          print('[AuthProvider] Token saved to SharedPreferences');
+        } catch (e) {
+          print('[AuthProvider] ERROR saving token: $e');
         }
         
         _errorMessage = null;
         _isLoading = false;
+        print('[AuthProvider] Sign in successful, isAuthenticated will be: ${_token != null && _token!.isNotEmpty}');
         notifyListeners();
         return true;
       } else {
-        _errorMessage = data['error'] as String? ?? 
-                       data['message'] as String? ?? 
-                       'Sign in failed';
+        // Handle different error status codes
+        String errorMsg = 'Sign in failed';
+        if (response.statusCode == 403) {
+          errorMsg = data['error'] as String? ?? 
+                    data['message'] as String? ?? 
+                    'Email not verified. Please check your inbox for the verification code.';
+        } else if (response.statusCode == 401) {
+          errorMsg = data['error'] as String? ?? 
+                    data['message'] as String? ?? 
+                    'Invalid email or password';
+        } else {
+          errorMsg = data['error'] as String? ?? 
+                    data['message'] as String? ?? 
+                    'Sign in failed';
+        }
+        _errorMessage = errorMsg;
         _isLoading = false;
+        print('[AuthProvider] Sign in failed: $_errorMessage (status: ${response.statusCode})');
         notifyListeners();
         return false;
       }
@@ -522,6 +557,80 @@ class AuthProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return _errorMessage;
+    }
+  }
+
+  Future<bool> forgotPassword(String email) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final uri = Uri.parse(AppConfig.serverHttpBaseUrl).resolve('/api/auth/forgot-password');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        // Success - always return true for security (don't reveal if email exists)
+        _errorMessage = null;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = data['error'] as String? ?? 'Failed to send password reset email';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'Network error: ${e.toString()}';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> resetPassword(String code, String password) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final uri = Uri.parse(AppConfig.serverHttpBaseUrl).resolve('/api/auth/reset-password');
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'code': code,
+          'password': password,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        _errorMessage = null;
+        _isLoading = false;
+        notifyListeners();
+        return true;
+      } else {
+        _errorMessage = data['error'] as String? ?? 'Failed to reset password';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'Network error: ${e.toString()}';
+      _isLoading = false;
+      notifyListeners();
+      return false;
     }
   }
 }

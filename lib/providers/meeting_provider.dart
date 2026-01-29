@@ -430,7 +430,7 @@ class MeetingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> generateSummary({bool regenerate = false}) async {
+  Future<void> generateSummary({bool regenerate = false, String? model}) async {
     if (_currentSession == null || _aiService == null) return;
     if (_isGeneratingSummary) return;
     
@@ -504,6 +504,7 @@ class MeetingProvider extends ChangeNotifier {
           final chunkSummary = await _aiService!.generateSummary(
             turns: chunks[i], 
             notesTemplate: notesTemplate,
+            model: model,
           );
           chunkSummaries.add(chunkSummary);
         }
@@ -522,11 +523,12 @@ class MeetingProvider extends ChangeNotifier {
           summary = await _aiService!.generateSummary(
             turns: combinedTurns, 
             notesTemplate: notesTemplate,
+            model: model,
           );
         }
       } else {
         // Use all turns directly if 50 or fewer
-        summary = await _aiService!.generateSummary(turns: allTurns, notesTemplate: notesTemplate);
+        summary = await _aiService!.generateSummary(turns: allTurns, notesTemplate: notesTemplate, model: model);
       }
       
       print('[MeetingProvider] Summary generated: ${summary.length} characters');

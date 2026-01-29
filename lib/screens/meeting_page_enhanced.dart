@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../config/app_config.dart';
 import '../providers/speech_to_text_provider.dart';
@@ -51,6 +52,9 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
   VoidCallback? _modesVersionListener;
   MeetingQuestionService? _questionService;
 
+  static const String _aiModelPrefKey = 'openai_model';
+  String _selectedAiModel = 'gpt-4o-mini';
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +70,8 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
       final authProvider = context.read<AuthProvider>();
       _speechProvider = context.read<SpeechToTextProvider>();
       _meetingProvider = context.read<MeetingProvider>();
+
+      await _loadAiModel();
       
       final authToken = authProvider.token;
       _questionService = MeetingQuestionService()..setAuthToken(authToken);
@@ -721,10 +727,157 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
     }
   }
 
+  Future<void> _loadAiModel() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_aiModelPrefKey);
+      if (saved != null && saved.trim().isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _selectedAiModel = saved.trim();
+          });
+        } else {
+          _selectedAiModel = saved.trim();
+        }
+      }
+    } catch (e) {
+      // Ignore failures; default will be used.
+    }
+  }
+
+  Future<void> _setAiModel(String model) async {
+    final trimmed = model.trim();
+    if (trimmed.isEmpty) return;
+    if (mounted) {
+      setState(() {
+        _selectedAiModel = trimmed;
+      });
+    } else {
+      _selectedAiModel = trimmed;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_aiModelPrefKey, trimmed);
+    } catch (e) {
+      // Ignore persistence failures; selection still applies for this run.
+    }
+  }
+
+  Future<void> _promptCustomModel() async {
+    final controller = TextEditingController(text: _selectedAiModel);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('OpenAI model'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Model',
+            hintText: 'e.g. gpt-4o-mini',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    final trimmed = result.trim();
+    if (trimmed.isEmpty) return;
+    await _setAiModel(trimmed);
+  }
+
+  Widget _buildModelMenuButton({required bool disabled, required ButtonStyle style}) {
+    final label = _selectedAiModel.trim().isEmpty ? 'Model' : _selectedAiModel.trim();
+    // Format model name for display (remove hyphens, capitalize)
+    final displayLabel = label
+        .replaceAll('-', ' ')
+        .split(' ')
+        .map((word) => word.isEmpty 
+            ? '' 
+            : word[0].toUpperCase() + (word.length > 1 ? word.substring(1) : ''))
+        .join(' ');
+    
+    return Tooltip(
+      message: 'Current model: $displayLabel\nClick to change',
+      child: PopupMenuButton<String>(
+        enabled: !disabled,
+        tooltip: 'Select model',
+        onSelected: (value) async {
+          if (value == '__custom__') {
+            await _promptCustomModel();
+            return;
+          }
+          await _setAiModel(value);
+        },
+        itemBuilder: (context) => const [
+          PopupMenuItem(value: 'gpt-5.2', child: Text('GPT-5.2')),
+          PopupMenuItem(value: 'gpt-5.2-pro', child: Text('GPT-5.2 Pro')),
+          PopupMenuItem(value: 'gpt-5', child: Text('GPT-5')),
+          PopupMenuItem(value: 'gpt-5.1', child: Text('GPT-5.1')),
+          PopupMenuItem(value: 'gpt-5-mini', child: Text('GPT-5 mini')),
+          PopupMenuItem(value: 'gpt-5-nano', child: Text('GPT-5 nano')),
+          PopupMenuItem(value: 'gpt-4.1', child: Text('GPT-4.1')),
+          PopupMenuItem(value: 'gpt-4.1-mini', child: Text('GPT-4.1 mini')),
+          PopupMenuDivider(),
+          PopupMenuItem(value: 'gpt-4o-mini', child: Text('gpt-4o-mini (legacy)')),
+          PopupMenuItem(value: 'gpt-4o', child: Text('gpt-4o (legacy)')),
+          PopupMenuDivider(),
+          PopupMenuItem(value: '__custom__', child: Text('Custom…')),
+        ],
+        child: Container(
+          width: 120,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.tune, size: 16),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  displayLabel,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _askAiWithPrompt(String? question) async {
     if (_speechProvider == null || _speechProvider!.isAiLoading) return;
     final systemPrompt = await _getRealTimePrompt();
-    _speechProvider!.askAi(question: question, systemPrompt: systemPrompt);
+    _speechProvider!.askAi(
+      question: question,
+      systemPrompt: systemPrompt,
+      model: _selectedAiModel,
+    );
   }
   
   void _updateAutoAskCallback() {
@@ -1375,6 +1528,11 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                   },
                 ),
                 const SizedBox(width: 10),
+                _buildModelMenuButton(
+                  disabled: speechProvider.isAiLoading,
+                  style: templatesButtonStyle,
+                ),
+                const SizedBox(width: 10),
                 IconButton.filled(
                   tooltip: 'Ask (Ctrl+Enter)',
                   onPressed: speechProvider.isAiLoading
@@ -1463,7 +1621,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                           await _showTextDialog(title: 'Summary', text: session.summary!);
                                         } else {
                                           // Generate if doesn't exist
-                                          await meetingProvider.generateSummary();
+                                          await meetingProvider.generateSummary(model: _selectedAiModel);
                                           final s = meetingProvider.currentSession?.summary ?? '';
                                           await _showTextDialog(title: 'Summary', text: s);
                                         }
@@ -1472,7 +1630,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                     ? null
                                     : () async {
                                         // Force regenerate
-                                        await meetingProvider.generateSummary(regenerate: true);
+                                        await meetingProvider.generateSummary(regenerate: true, model: _selectedAiModel);
                                         final s = meetingProvider.currentSession?.summary ?? '';
                                         await _showTextDialog(title: 'Summary', text: s);
                                       },
@@ -1583,6 +1741,11 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                 },
               ),
               const SizedBox(width: 10),
+              _buildModelMenuButton(
+                disabled: speechProvider.isAiLoading,
+                style: templatesButtonStyle,
+              ),
+              const SizedBox(width: 10),
               IconButton.filled(
                 tooltip: 'Ask (Ctrl+Enter)',
                 onPressed: speechProvider.isAiLoading
@@ -1670,7 +1833,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                       await _showTextDialog(title: 'Summary', text: session.summary!);
                                     } else {
                                       // Generate if doesn't exist
-                                      await meetingProvider.generateSummary();
+                                      await meetingProvider.generateSummary(model: _selectedAiModel);
                                       final s = meetingProvider.currentSession?.summary ?? '';
                                       await _showTextDialog(title: 'Summary', text: s);
                                     }
@@ -1679,7 +1842,7 @@ class _MeetingPageEnhancedState extends State<MeetingPageEnhanced> {
                                 ? null
                                 : () async {
                                     // Force regenerate
-                                    await meetingProvider.generateSummary(regenerate: true);
+                                    await meetingProvider.generateSummary(regenerate: true, model: _selectedAiModel);
                                     final s = meetingProvider.currentSession?.summary ?? '';
                                     await _showTextDialog(title: 'Summary', text: s);
                                   },
